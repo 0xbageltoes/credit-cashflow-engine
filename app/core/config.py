@@ -18,8 +18,19 @@ class Settings(BaseSettings):
     def SUPABASE_KEY(self) -> str:
         return self.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
-    # Redis settings (optional)
-    REDIS_URL: Optional[str] = None
+    # Redis settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: Optional[str] = None
+    
+    # Rate limiting settings
+    RATE_LIMIT_REQUESTS: int = 100  # Number of requests
+    RATE_LIMIT_WINDOW: int = 3600   # Time window in seconds (1 hour)
+    
+    # Cache settings
+    CACHE_TTL: int = 3600  # Cache time-to-live in seconds
+    BATCH_SIZE: int = 1000  # Size of batch operations for database
     
     # API settings
     API_V1_STR: str = "/api/v1"

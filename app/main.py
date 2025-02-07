@@ -12,6 +12,7 @@ from app.models.cashflow import (
     ScenarioSaveRequest,
     ScenarioResponse
 )
+from app.core.middleware import RateLimitMiddleware
 
 app = FastAPI(
     title="Credit Cashflow Engine",
@@ -29,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware)
 
 # Initialize services
 cashflow_service = CashflowService()
@@ -112,3 +116,22 @@ async def get_forecast_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}
+
+@app.get("/metrics")
+async def metrics():
+    """Metrics endpoint for monitoring"""
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "endpoints": {
+            "/api/v1/forecast": "Generate cashflow forecasts",
+            "/api/v1/scenarios": "Manage forecast scenarios",
+            "/health": "Health check endpoint",
+            "/metrics": "Metrics endpoint"
+        }
+    }

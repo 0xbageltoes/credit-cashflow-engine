@@ -21,8 +21,28 @@ create table if not exists public.cashflow_scenarios (
     updated_at timestamptz default now()
 );
 
+-- Create forecast_runs table
+create table if not exists public.forecast_runs (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid references auth.users(id) on delete cascade,
+    request jsonb not null,
+    projections jsonb not null,
+    created_at timestamptz default now()
+);
+
+-- Create indexes for better query performance
+CREATE INDEX idx_scenarios_user_id ON public.cashflow_scenarios(user_id);
+CREATE INDEX idx_scenarios_created_at ON public.cashflow_scenarios(created_at);
+CREATE INDEX idx_forecast_runs_user_id ON public.forecast_runs(user_id);
+CREATE INDEX idx_forecast_runs_created_at ON public.forecast_runs(created_at);
+
+-- Add composite indexes for common query patterns
+CREATE INDEX idx_scenarios_user_created ON public.cashflow_scenarios(user_id, created_at DESC);
+CREATE INDEX idx_forecast_user_created ON public.forecast_runs(user_id, created_at DESC);
+
 -- Enable RLS
 alter table public.cashflow_scenarios enable row level security;
+alter table public.forecast_runs enable row level security;
 
 -- Create RLS policies
 create policy "Users can view their own scenarios"
@@ -46,19 +66,6 @@ create policy "Users can delete their own scenarios"
     for delete
     using (auth.uid() = user_id);
 
--- Create forecast_runs table
-create table if not exists public.forecast_runs (
-    id uuid default gen_random_uuid() primary key,
-    user_id uuid references auth.users(id) on delete cascade,
-    request jsonb not null,
-    projections jsonb not null,
-    created_at timestamptz default now()
-);
-
--- Enable RLS
-alter table public.forecast_runs enable row level security;
-
--- Create RLS policies
 create policy "Users can view their own forecasts"
     on public.forecast_runs
     for select
