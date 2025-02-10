@@ -1,86 +1,101 @@
-import redis
 import json
 from typing import Any, Optional
+from redis import Redis
 from functools import wraps
-from datetime import datetime
 from app.core.config import settings
+import ssl
+from urllib.parse import urlparse
 
-class RedisManager:
+class RedisCache:
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.client = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                password=settings.REDIS_PASSWORD,
-                decode_responses=True
+            cls._instance = super(RedisCache, cls).__new__(cls)
+            cls._instance.client = Redis.from_url(
+                settings.REDIS_URL_WITH_SSL,
+                decode_responses=True,
+                ssl=True,
+                ssl_cert_reqs=None
             )
         return cls._instance
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""
-        return self.client.get(key)
+        try:
+            value = self.client.get(key)
+            return json.loads(value) if value else None
+        except Exception as e:
+            print(f"Error getting from cache: {str(e)}")
+            return None
 
     def set(self, key: str, value: Any, ttl: int = None) -> bool:
         """Set value in cache with optional TTL"""
-        if isinstance(value, (dict, list)):
-            value = json.dumps(value)
-        return self.client.set(key, value, ex=ttl or settings.CACHE_TTL)
+        try:
+            serialized = json.dumps(value)
+            if ttl:
+                return bool(self.client.setex(key, ttl, serialized))
+            return bool(self.client.set(key, serialized))
+        except Exception as e:
+            print(f"Error setting cache: {str(e)}")
+            return False
 
     def delete(self, key: str) -> bool:
-        """Delete key from cache"""
-        return bool(self.client.delete(key))
+        """Delete value from cache"""
+        try:
+            return bool(self.client.delete(key))
+        except Exception as e:
+            print(f"Error deleting from cache: {str(e)}")
+            return False
 
-    def increment(self, key: str) -> int:
-        """Increment counter"""
-        return self.client.incr(key)
-
-    def expire(self, key: str, ttl: int) -> bool:
-        """Set expiration for key"""
-        return self.client.expire(key, ttl)
+    def exists(self, key: str) -> bool:
+        """Check if key exists in cache"""
+        try:
+            return bool(self.client.exists(key))
+        except Exception as e:
+            print(f"Error checking cache: {str(e)}")
+            return False
 
 class RateLimiter:
     def __init__(self):
-        self.redis = RedisManager()
+        self.cache = RedisCache()
 
     def is_rate_limited(self, user_id: str) -> bool:
         """Check if user has exceeded rate limit"""
         key = f"rate_limit:{user_id}"
-        count = self.redis.get(key)
+        count = self.cache.get(key) or 0
         
-        if count is None:
-            # First request
-            self.redis.set(key, 1, settings.RATE_LIMIT_WINDOW)
-            return False
-            
-        count = int(count)
         if count >= settings.RATE_LIMIT_REQUESTS:
             return True
-            
-        self.redis.increment(key)
+        
+        self.cache.set(key, count + 1)
+        if count == 0:
+            self.cache.client.expire(key, settings.RATE_LIMIT_WINDOW)
+        
         return False
 
-def cache_response(ttl: Optional[int] = None):
-    """Decorator to cache API responses"""
+def cache_response(ttl: int = 3600):
+    """Decorator to cache function responses"""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            cache = RedisManager()
+            cache = RedisCache()
             
-            # Generate cache key from function name and arguments
-            cache_key = f"{func.__name__}:{hash(str(args) + str(kwargs))}"
+            # Create cache key from function name and arguments
+            key_parts = [func.__name__]
+            key_parts.extend(str(arg) for arg in args)
+            key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
+            cache_key = ":".join(key_parts)
             
             # Try to get from cache
-            cached_result = cache.get(cache_key)
-            if cached_result:
-                return json.loads(cached_result)
+            cached_value = cache.get(cache_key)
+            if cached_value is not None:
+                return cached_value
             
-            # Execute function and cache result
+            # If not in cache, execute function and cache result
             result = await func(*args, **kwargs)
-            cache.set(cache_key, json.dumps(result), ttl)
+            if result is not None:
+                cache.set(cache_key, result, ttl)
             
             return result
         return wrapper

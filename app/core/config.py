@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Optional
+import ssl
 
 class Settings(BaseSettings):
     # Environment variables as they appear in .env
@@ -8,6 +9,22 @@ class Settings(BaseSettings):
     NEXT_PUBLIC_SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
+    
+    # Redis settings
+    REDIS_URL: str
+    
+    @property
+    def REDIS_URL_WITH_SSL(self) -> str:
+        """Redis URL with SSL protocol"""
+        return self.REDIS_URL.replace('redis://', 'rediss://')
+    
+    @property
+    def CELERY_BROKER_URL(self) -> str:
+        return self.REDIS_URL_WITH_SSL
+    
+    @property
+    def CELERY_RESULT_BACKEND(self) -> str:
+        return f"{self.REDIS_URL_WITH_SSL}/1"  # Use DB 1 for results
     
     # Computed properties
     @property
@@ -18,12 +35,6 @@ class Settings(BaseSettings):
     def SUPABASE_KEY(self) -> str:
         return self.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
-    # Redis settings
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
-    REDIS_PASSWORD: Optional[str] = None
-    
     # Rate limiting settings
     RATE_LIMIT_REQUESTS: int = 100  # Number of requests
     RATE_LIMIT_WINDOW: int = 3600   # Time window in seconds (1 hour)
@@ -32,12 +43,19 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 3600  # Cache time-to-live in seconds
     BATCH_SIZE: int = 1000  # Size of batch operations for database
     
+    # Market Data API settings
+    FRED_API_KEY: Optional[str] = None
+    FRED_CACHE_TTL: int = 3600  # 1 hour cache for market data
+    BLOOMBERG_API_KEY: Optional[str] = None
+    ECB_API_URL: str = "https://sdw-wsrest.ecb.europa.eu/service"
+    
     # API settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Credit Cashflow Engine"
     
     class Config:
         env_file = ".env"
+        extra = "allow"  # Allow extra fields in environment variables
 
 @lru_cache()
 def get_settings():

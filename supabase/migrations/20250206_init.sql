@@ -25,8 +25,28 @@ create table if not exists public.cashflow_scenarios (
 create table if not exists public.forecast_runs (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references auth.users(id) on delete cascade,
-    request jsonb not null,
-    projections jsonb not null,
+    scenario_name text not null,
+    total_principal numeric not null,
+    total_interest numeric not null,
+    npv numeric not null,
+    irr numeric not null,
+    duration numeric not null,
+    convexity numeric not null,
+    monte_carlo_results jsonb,
+    created_at timestamptz default now()
+);
+
+-- Create forecast_projections table
+create table if not exists public.forecast_projections (
+    id uuid default gen_random_uuid() primary key,
+    forecast_id uuid references public.forecast_runs(id) on delete cascade,
+    user_id uuid references auth.users(id) on delete cascade,
+    period integer not null,
+    date text not null,
+    principal numeric not null,
+    interest numeric not null,
+    total_payment numeric not null,
+    remaining_balance numeric not null,
     created_at timestamptz default now()
 );
 
@@ -43,6 +63,7 @@ CREATE INDEX idx_forecast_user_created ON public.forecast_runs(user_id, created_
 -- Enable RLS
 alter table public.cashflow_scenarios enable row level security;
 alter table public.forecast_runs enable row level security;
+alter table public.forecast_projections enable row level security;
 
 -- Create RLS policies
 create policy "Users can view their own scenarios"
@@ -84,6 +105,27 @@ create policy "Users can update their own forecasts"
 
 create policy "Users can delete their own forecasts"
     on public.forecast_runs
+    for delete
+    using (auth.uid() = user_id);
+
+create policy "Users can view their own forecast projections"
+    on public.forecast_projections
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can insert their own forecast projections"
+    on public.forecast_projections
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own forecast projections"
+    on public.forecast_projections
+    for update
+    using (auth.uid() = user_id)
+    with check (auth.uid() = user_id);
+
+create policy "Users can delete their own forecast projections"
+    on public.forecast_projections
     for delete
     using (auth.uid() = user_id);
 

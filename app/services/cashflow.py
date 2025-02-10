@@ -14,7 +14,7 @@ from app.core.config import settings
 from supabase import create_client, Client
 from functools import lru_cache
 from app.services.analytics import AnalyticsService, AnalyticsResult
-from app.core.cache import cache_response, RedisManager
+from app.core.cache import cache_response, RedisCache
 
 class CashflowService:
     def __init__(self):
@@ -24,7 +24,7 @@ class CashflowService:
             settings.SUPABASE_SERVICE_ROLE_KEY
         )
         self.analytics = AnalyticsService()
-        self.cache = RedisManager()
+        self.cache = RedisCache()
 
     def _vectorized_loan_calculations(self, loans: List[Dict]) -> tuple:
         """Vectorized calculation of loan amortization schedules"""
