@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'cashflow-engine'
+    static_configs:
+      - targets: ['localhost:8000']  # FastAPI metrics endpoint
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['localhost:5555']  # Celery Flower metrics
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:6379']  # Redis metrics
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+rule_files:
+  - 'prometheus/*.rules'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - 'localhost:9093'  # AlertManager endpoint

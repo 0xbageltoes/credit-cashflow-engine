@@ -106,7 +106,7 @@ class AnalyticsService:
             "percentile_95": np.percentile(scenario_array, 95, axis=0).tolist()
         }
 
-    def analyze_cashflows(self,
+    async def analyze_cashflows(self,
                          cashflows: np.ndarray,
                          discount_rate: float = 0.05,
                          run_monte_carlo: bool = True) -> AnalyticsResult:
