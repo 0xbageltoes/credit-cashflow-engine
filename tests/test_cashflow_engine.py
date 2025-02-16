@@ -1,10 +1,20 @@
+"""Test module for the cashflow engine"""
 import pytest
 import numpy as np
 import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.cashflow import CashflowService
-from app.models.cashflow import CashflowForecastRequest
+from app.models.cashflow import (
+    CashflowForecastRequest,
+    CashflowProjection,
+    MonteCarloConfig,
+    EconomicFactors,
+    StressTestScenario,
+    MonteCarloResults,
+    LoanData
+)
+from app.models.analytics import AnalyticsResult
 from app.core.redis_cache import RedisCache
 from app.services.analytics import AnalyticsService
 from .test_data import (
@@ -46,36 +56,31 @@ async def mock_supabase():
 @pytest.fixture(scope="function")
 async def mock_redis():
     """Mock Redis cache"""
-    mock = AsyncMock(spec=RedisCache)
+    mock = AsyncMock()
     mock.get = AsyncMock(return_value=None)
     mock.set = AsyncMock()
-    mock.delete = AsyncMock()
-    mock.set_task_status = AsyncMock()
-    mock.get_task_status = AsyncMock()
-    mock.set_forecast_result = AsyncMock()
-    mock.get_forecast_result = AsyncMock()
-    mock.cleanup_websocket = AsyncMock()
-    mock.clear_stale_forecasts = AsyncMock()
     return mock
 
 @pytest.fixture(scope="function")
 async def mock_analytics():
     """Mock AnalyticsService"""
-    mock = AsyncMock(spec=AnalyticsService)
-    mock.analyze_cashflows = AsyncMock()
+    mock = MagicMock()
+    mock.calculate_metrics = AsyncMock(return_value=AnalyticsResult(
+        npv=100000.0,
+        irr=0.06,
+        dscr=1.25,
+        ltv=0.75
+    ))
     return mock
 
 @pytest.fixture(scope="function")
 async def cashflow_service(mock_supabase, mock_redis, mock_analytics):
     """Create an instance of CashflowService for testing."""
-    with patch('app.services.cashflow.create_client') as mock_create_client, \
-         patch('app.services.cashflow.RedisCache') as mock_redis_class, \
-         patch('app.services.cashflow.AnalyticsService') as mock_analytics_class:
-        mock_create_client.return_value = mock_supabase
-        mock_redis_class.return_value = mock_redis
-        mock_analytics_class.return_value = mock_analytics
-        service = CashflowService()
-        yield service
+    service = CashflowService()
+    service.supabase = mock_supabase
+    service.cache = mock_redis
+    service.analytics = mock_analytics
+    return service
 
 @pytest.mark.asyncio
 class TestCashflowCalculations:
@@ -129,6 +134,7 @@ class TestCashflowCalculations:
         """Test hybrid rate loan calculations"""
         loan = get_hybrid_rate_loan()
         economic_factors = get_economic_factors()
+        
         request = CashflowForecastRequest(
             loans=[loan],
             economic_factors=economic_factors

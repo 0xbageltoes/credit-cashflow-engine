@@ -1,41 +1,50 @@
+"""Cashflow service for generating loan cash flow projections"""
 import numpy as np
 import numpy_financial as npf
 import pandas as pd
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
+import asyncio
+import logging
+
 from app.models.cashflow import (
-    CashflowForecastRequest,
-    CashflowForecastResponse,
     CashflowProjection,
     ScenarioSaveRequest,
     ScenarioResponse,
-    MonteCarloResults
+    MonteCarloResults,
+    LoanData,
+    MonteCarloConfig,
+    StressTestScenario,
+    CashflowForecastRequest,
+    CashflowForecastResponse,
+    EconomicFactors
 )
+from app.models.analytics import AnalyticsResult
 from app.core.config import settings
-from supabase import create_client, Client
-from functools import lru_cache
-from app.services.analytics import AnalyticsService, AnalyticsResult
+from app.services.analytics import AnalyticsService
 from app.core.redis_cache import RedisCache
-import asyncio
-import logging
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
 class CashflowService:
-    def __init__(self):
-        self.supabase: Client = create_client(
+    """Service for generating loan cash flow projections"""
+    
+    def __init__(self, supabase_client: Optional[Client] = None, redis_cache: Optional[RedisCache] = None, analytics_service: Optional[AnalyticsService] = None):
+        """Initialize the CashflowService with optional dependencies for testing"""
+        self.supabase = supabase_client or create_client(
             settings.SUPABASE_URL,
             settings.SUPABASE_SERVICE_ROLE_KEY
         )
-        self.analytics = AnalyticsService()
-        self.cache = RedisCache()
+        self.analytics = analytics_service or AnalyticsService()
+        self.cache = redis_cache or RedisCache()
         self.BATCH_SIZE = 1000
 
     def _vectorized_loan_calculations(
         self,
-        loans: List[Dict],
+        loans: List[LoanData],
         economic_factors: Optional[Dict] = None
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[np.ndarray]]:
         """
         Vectorized calculation of loan amortization schedules with support for:
         - Interest-only periods
@@ -43,78 +52,141 @@ class CashflowService:
         - Economic factor adjustments
         - Enhanced prepayment modeling
         """
-        # Convert loan parameters to numpy arrays
-        principals = np.array([float(loan.principal) for loan in loans])
-        rates = np.array([float(loan.interest_rate) / 12 for loan in loans])
-        terms = np.array([int(loan.term_months) for loan in loans])
-        prepay_rates = np.array([float(loan.prepayment_assumption) for loan in loans])
-        interest_only_periods = np.array([int(loan.interest_only_periods or 0) for loan in loans])
-        balloon_payments = np.array([float(loan.balloon_payment or 0) for loan in loans])
+        # Convert loans to arrays for vectorized operations
+        principals = np.array([loan.principal for loan in loans])
+        rates = np.array([loan.interest_rate for loan in loans])
+        terms = np.array([loan.term_months for loan in loans])
+        io_periods = np.array([loan.interest_only_periods or 0 for loan in loans])
+        balloon_payments = np.array([loan.balloon_payment or 0 for loan in loans])
         
-        # Economic factors adjustment
+        # Adjust rates for economic factors if provided
         if economic_factors:
-            rates = self._adjust_rates_for_economic_factors(rates, economic_factors)
-            prepay_rates = self._adjust_prepayment_for_economic_factors(prepay_rates, economic_factors)
+            # For hybrid rate loans, adjust based on market rate
+            for i in range(len(loans)):
+                if loans[i].rate_type == "hybrid":
+                    market_rate = economic_factors.get('market_rate', rates[i])
+                    spread = loans[i].rate_spread or 0
+                    cap = loans[i].rate_cap or float('inf')
+                    floor = loans[i].rate_floor or 0
+                    
+                    # Calculate new rate within bounds
+                    rates[i] = min(cap, max(floor, market_rate + spread))
         
-        # Calculate monthly payments (excluding interest-only periods and balloon)
-        amort_terms = terms - interest_only_periods
-        pmts = np.zeros_like(principals)
-        for i in range(len(loans)):
-            if balloon_payments[i] > 0:
-                # Calculate payment with balloon
-                pmts[i] = npf.pmt(
-                    rates[i],
-                    amort_terms[i],
-                    -principals[i],
-                    balloon_payments[i]
-                )
-            else:
-                # Regular amortization
-                pmts[i] = npf.pmt(
-                    rates[i],
-                    amort_terms[i],
-                    -principals[i]
-                )
+        # Initialize arrays
+        max_term = int(np.max(terms))
+        n_loans = len(loans)
         
-        # Generate periods array for each loan
-        max_term = max(terms)
-        periods = np.arange(1, max_term + 1)
-        periods_matrix = np.broadcast_to(periods, (len(loans), len(periods)))
+        principal_payments = np.zeros((n_loans, max_term))
+        interest_payments = np.zeros((n_loans, max_term))
+        remaining_balance = np.zeros((n_loans, max_term))
+        periods = [np.arange(1, term + 1) for term in terms]
         
-        # Initialize payment arrays
-        principal_payments = np.zeros((len(loans), max_term))
-        interest_payments = np.zeros((len(loans), max_term))
-        remaining_balance = np.zeros((len(loans), max_term))
+        # Calculate monthly payments (excluding balloon)
+        monthly_rates = rates / 12
+        monthly_payments = np.zeros(n_loans)
         
-        for i in range(len(loans)):
-            term = terms[i]
-            principal = principals[i]
-            rate = rates[i]
-            io_period = interest_only_periods[i]
-            balloon = balloon_payments[i]
+        for i in range(n_loans):
+            # Calculate regular monthly payment
+            monthly_payments[i] = abs(npf.pmt(
+                monthly_rates[i],
+                terms[i],
+                principals[i]
+            ))
+        
+        # Calculate amortization schedule for each loan
+        for i in range(n_loans):
+            balance = principals[i]
+            term = int(terms[i])
             
-            # Handle interest-only period
-            if io_period > 0:
-                interest_payments[i, :io_period] = principal * rate
-                principal_payments[i, :io_period] = 0
-                remaining_balance[i, :io_period] = principal
-            
-            # Calculate amortization schedule
-            balance = principal
-            for j in range(io_period, term):
-                interest = balance * rate
-                if j == term - 1 and balloon > 0:
-                    # Handle balloon payment
-                    principal_payment = balloon
-                else:
-                    principal_payment = pmts[i] - interest
+            for t in range(term):
+                # Calculate interest portion
+                interest = balance * monthly_rates[i]
                 
-                interest_payments[i, j] = interest
-                principal_payments[i, j] = principal_payment
-                remaining_balance[i, j] = balance - principal_payment
-                balance = remaining_balance[i, j]
+                # Handle interest-only period
+                if t < io_periods[i]:
+                    principal_payment = 0
+                    interest_payment = interest
+                else:
+                    # For regular payments
+                    if t == term - 1:  # Last payment
+                        if balloon_payments[i] > 0:
+                            # Balloon payment
+                            principal_payment = balloon_payments[i]
+                        else:
+                            # Regular final payment - pay off remaining balance
+                            principal_payment = balance
+                        interest_payment = interest
+                    else:
+                        # Regular amortization payment
+                        principal_payment = monthly_payments[i] - interest
+                        interest_payment = interest
+                
+                # Store payments and update balance
+                principal_payments[i, t] = principal_payment
+                interest_payments[i, t] = interest_payment
+                remaining_balance[i, t] = balance
+                
+                # Update balance
+                balance = max(0, balance - principal_payment)
+                
+                # For last payment, ensure balance is exactly zero
+                if t == term - 1:
+                    balance = 0
+                    remaining_balance[i, t] = 0
         
-        return principal_payments, interest_payments, remaining_balance, periods_matrix
+        return principal_payments, interest_payments, remaining_balance, periods
+
+    def _calculate_summary_metrics(self, projections: List[CashflowProjection], economic_factors: Optional[Dict] = None) -> Dict:
+        """Calculate summary metrics for a list of projections with economic factor adjustments"""
+        # Calculate total principal without counting prepayments
+        total_principal = 0
+        total_interest = 0
+        total_payments = 0
+        
+        for proj in projections:
+            total_principal += proj.principal
+            total_interest += proj.interest
+            total_payments += proj.total_payment
+        
+        # Calculate NPV using a base discount rate adjusted by economic factors
+        base_rate = 0.05  # Base annual discount rate
+        
+        # Apply economic factor adjustments to discount rate
+        if economic_factors:
+            market_rate = economic_factors.get('market_rate', base_rate)
+            inflation = economic_factors.get('inflation_rate', 0.02)
+            unemployment = economic_factors.get('unemployment_rate', 0.05)
+            gdp_growth = economic_factors.get('gdp_growth', 0.025)
+            
+            # Adjust discount rate based on economic conditions
+            risk_premium = 0.02  # Base risk premium
+            
+            # Increase risk premium in adverse conditions
+            if inflation > 0.03:
+                risk_premium += (inflation - 0.03) * 2
+            if unemployment > 0.06:
+                risk_premium += (unemployment - 0.06) * 3
+            if gdp_growth < 0:
+                risk_premium += abs(gdp_growth) * 2
+                
+            # Final discount rate includes market rate and risk adjustments
+            discount_rate = (market_rate + risk_premium) / 12  # Convert to monthly
+        else:
+            discount_rate = base_rate / 12
+        
+        # Calculate NPV with adjusted discount rate
+        npv = 0
+        for i, p in enumerate(projections, 1):
+            # Add current payment discounted to present value
+            discount_factor = (1 + discount_rate) ** i
+            npv += p.total_payment / discount_factor
+        
+        return {
+            "total_principal": float(total_principal),
+            "total_interest": float(total_interest),
+            "total_payments": float(total_payments),
+            "npv": float(npv)
+        }
 
     async def generate_forecast(
         self,
@@ -123,85 +195,257 @@ class CashflowService:
     ) -> CashflowForecastResponse:
         """Generate cash flow projections with enhanced features"""
         start_time = datetime.now()
-        
+
         # Get economic factors
-        economic_factors = request.economic_factors
-        if not economic_factors:
-            economic_factors = await self._get_economic_factors()
-        
-        # Convert economic factors to dict if needed
-        if hasattr(economic_factors, 'dict'):
-            economic_factors = economic_factors.dict()
-        
-        # Generate cash flows
-        principal_payments, interest_payments, remaining_balance, periods = \
-            self._vectorized_loan_calculations(request.loans, economic_factors)
-        
-        # Create projections
+        economic_factors = None
+        if request.economic_factors:
+            economic_factors = request.economic_factors.model_dump()
+
+        # Calculate base projections
+        principal_payments, interest_payments, remaining_balance, periods = self._vectorized_loan_calculations(
+            request.loans,
+            economic_factors
+        )
+
+        # Create projections list
         projections = []
-        start_date = datetime.strptime(request.loans[0].start_date, "%Y-%m-%d")
         
+        # Get payment dates
+        payment_dates = self._generate_payment_dates(request.loans[0].start_date, len(periods[0]))
+        
+        # Aggregate payments for each period
         for i in range(len(periods[0])):
-            payment_date = (start_date + pd.DateOffset(months=i)).strftime("%Y-%m-%d")
+            payment_date = payment_dates[i]
             
-            # Sum payments across all loans for this period
-            total_principal = np.sum(principal_payments[:, i])
-            total_interest = np.sum(interest_payments[:, i])
-            total_balance = np.sum(remaining_balance[:, i])
+            # Sum payments across all loans
+            total_principal = float(sum(principal_payments[j][i] for j in range(len(request.loans))))
+            total_interest = float(sum(interest_payments[j][i] for j in range(len(request.loans))))
+            total_balance = float(sum(remaining_balance[j][i] for j in range(len(request.loans))))
             
-            # Determine if this is an interest-only or balloon payment
-            is_interest_only = total_principal == 0 and total_interest > 0
+            # Check for special payment types
+            is_interest_only = any(i < loan.interest_only_periods for loan in request.loans)
             is_balloon = i == len(periods[0]) - 1 and any(loan.balloon_payment for loan in request.loans)
             
             # Get effective rate for this period
-            if economic_factors:
-                effective_rate = economic_factors['market_rate'] if 'market_rate' in economic_factors else request.loans[0].interest_rate
+            if economic_factors and request.loans[0].rate_type == "hybrid":
+                market_rate = economic_factors.get('market_rate', request.loans[0].interest_rate)
+                spread = request.loans[0].rate_spread or 0
+                cap = request.loans[0].rate_cap or float('inf')
+                floor = request.loans[0].rate_floor or 0
+                effective_rate = min(cap, max(floor, market_rate + spread))
             else:
                 effective_rate = request.loans[0].interest_rate
             
+            # Create projection with validated values
             projections.append(CashflowProjection(
                 period=i + 1,
                 date=payment_date,
-                principal=float(total_principal),
-                interest=float(total_interest),
-                total_payment=float(total_principal + total_interest),
-                remaining_balance=float(total_balance),
+                principal=max(0.0, total_principal),
+                interest=max(0.0, total_interest),
+                total_payment=max(0.0, total_principal + total_interest),
+                remaining_balance=max(0.0, total_balance),
                 is_interest_only=is_interest_only,
                 is_balloon=is_balloon,
-                rate=float(effective_rate)
+                rate=min(1.0, max(0.0, float(effective_rate)))
             ))
-        
-        # Run analytics
-        analytics_result = await self.analytics.analyze_cashflows(projections)
-        
+
         # Run Monte Carlo simulation if requested
         monte_carlo_results = None
-        if request.run_monte_carlo:
-            monte_carlo_results = await self._run_monte_carlo_simulation(request, economic_factors)
+        if getattr(request, 'run_monte_carlo', False):
+            monte_carlo_results = await self._run_monte_carlo_simulation(request, economic_factors or {})
+
+        # Calculate summary metrics
+        summary_metrics = self._calculate_summary_metrics(projections, economic_factors)
         
-        # Save results if user_id is provided
-        forecast_id = None
-        if user_id != "simulation":
-            forecast_id = await self._save_forecast(request, projections, user_id, analytics_result)
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
         
-        computation_time = (datetime.now() - start_time).total_seconds()
-        
-        return CashflowForecastResponse(
-            scenario_id=forecast_id,
+        # Create response
+        response = CashflowForecastResponse(
             projections=projections,
-            summary_metrics={
-                "total_principal": float(np.sum(principal_payments)),
-                "total_interest": float(np.sum(interest_payments)),
-                "total_payments": float(np.sum(principal_payments) + np.sum(interest_payments)),
-                "npv": analytics_result.npv,
-                "irr": analytics_result.irr,
-                "duration": analytics_result.duration,
-                "convexity": analytics_result.convexity
-            },
+            summary_metrics=summary_metrics,
             monte_carlo_results=monte_carlo_results,
-            economic_scenario=economic_factors,
-            computation_time=computation_time
+            computation_time=execution_time
         )
+        
+        # Cache results
+        if user_id != "simulation":
+            await self._cache_results(user_id, response.model_dump())
+        
+        return response
+
+    async def _run_monte_carlo_simulation(
+        self,
+        request: CashflowForecastRequest,
+        economic_factors: Dict
+    ) -> MonteCarloResults:
+        """Run enhanced Monte Carlo simulation with stress scenarios"""
+        # Initialize results
+        npv_values = []
+        default_scenarios = []
+        prepayment_scenarios = []
+        rate_scenarios = []
+        stress_test_results = {}
+        
+        # Get Monte Carlo config
+        config = request.monte_carlo_config
+        if not config:
+            config = MonteCarloConfig()  # Use default config
+        
+        # Run base simulations
+        for _ in range(config.num_simulations):
+            # Generate random scenario
+            scenario = self._generate_random_scenario(economic_factors, config)
+            
+            # Create a copy of the request with the new scenario
+            request_data = request.model_dump()
+            request_data['run_monte_carlo'] = False  # Prevent recursion
+            request_data['economic_factors'] = scenario
+            
+            # Run simulation with this scenario
+            sim_request = CashflowForecastRequest.model_validate(request_data)
+            sim_response = await self.generate_forecast(sim_request, "simulation")
+            
+            # Record results
+            npv = sim_response.summary_metrics["npv"]
+            npv_values.append(npv)
+            
+            # Record special scenarios
+            if scenario.get('default_occurred', False):
+                default_scenarios.append({
+                    "npv": npv,
+                    "rate": scenario.get('market_rate', 0.045)
+                })
+            
+            if scenario.get('prepayment_occurred', False):
+                prepayment_scenarios.append({
+                    "npv": npv,
+                    "rate": scenario.get('market_rate', 0.045)
+                })
+            
+            rate_scenarios.append({
+                "rate_shock": scenario.get('rate_shock', 0),
+                "npv": npv
+            })
+        
+        # Calculate confidence intervals
+        npv_values = np.array(npv_values)
+        confidence_intervals = {
+            "npv": {
+                "95": [float(np.percentile(npv_values, 2.5)), float(np.percentile(npv_values, 97.5))],
+                "99": [float(np.percentile(npv_values, 0.5)), float(np.percentile(npv_values, 99.5))]
+            }
+        }
+        
+        # Run stress test scenarios if provided
+        if hasattr(config, 'stress_scenarios') and config.stress_scenarios:
+            for scenario in config.stress_scenarios:
+                # Create stressed economic factors
+                stressed_factors = economic_factors.copy()
+                if scenario.economic_factors:
+                    stressed_factors.update(scenario.economic_factors.model_dump())
+                
+                # Add stress test modifiers
+                stressed_factors['market_rate'] = stressed_factors.get('market_rate', 0.045) + scenario.rate_shock
+                stressed_factors['default_prob'] = config.default_prob * scenario.default_multiplier
+                stressed_factors['prepay_prob'] = config.prepay_prob * scenario.prepay_multiplier
+                
+                # Run simulation with stressed scenario
+                request_data = request.model_dump()
+                request_data['run_monte_carlo'] = False
+                request_data['economic_factors'] = stressed_factors
+                stress_response = await self.generate_forecast(
+                    CashflowForecastRequest.model_validate(request_data),
+                    "simulation"
+                )
+                
+                stress_test_results[scenario.name] = {
+                    "npv": float(stress_response.summary_metrics["npv"]),
+                    "rate_shock": scenario.rate_shock,
+                    "default_multiplier": scenario.default_multiplier,
+                    "prepay_multiplier": scenario.prepay_multiplier
+                }
+        
+        # Calculate VaR metrics
+        var_metrics = {
+            "var_95": float(-np.percentile(npv_values, 5)),
+            "var_99": float(-np.percentile(npv_values, 1)),
+            "expected_shortfall": float(-np.mean(npv_values[npv_values < np.percentile(npv_values, 5)]))
+        }
+        
+        # Sensitivity analysis
+        rate_shocks = [r["rate_shock"] for r in rate_scenarios]
+        npvs = [r["npv"] for r in rate_scenarios]
+        sensitivity = {
+            "rate_sensitivity": float(np.corrcoef(rate_shocks, npvs)[0, 1]) if len(rate_shocks) > 1 else 0.0
+        }
+        
+        return MonteCarloResults(
+            npv_distribution=[float(x) for x in npv_values],
+            default_scenarios=default_scenarios,
+            prepayment_scenarios=prepayment_scenarios,
+            rate_scenarios=rate_scenarios,
+            confidence_intervals=confidence_intervals,
+            stress_test_results=stress_test_results,
+            var_metrics=var_metrics,
+            sensitivity_analysis=sensitivity
+        )
+
+    def _generate_random_scenario(self, base_scenario: Dict, config: MonteCarloConfig) -> Dict:
+        """Generate a random economic scenario for Monte Carlo simulation"""
+        scenario = {}
+        
+        # Generate base economic factors with significant random variation
+        scenario['market_rate'] = max(0.001, np.random.normal(0.045, 0.02))
+        scenario['inflation_rate'] = max(0, np.random.normal(0.02, 0.015))
+        scenario['unemployment_rate'] = max(0.02, np.random.normal(0.05, 0.02))
+        scenario['gdp_growth'] = np.random.normal(0.025, 0.02)
+        scenario['house_price_appreciation'] = np.random.normal(0.03, 0.025)
+        
+        # Add extreme rate shocks with higher volatility
+        rate_shock = float(np.random.normal(0, config.rate_volatility * 8))  # 8x volatility
+        scenario['rate_shock'] = rate_shock
+        
+        # Apply rate shock to market rate
+        scenario['market_rate'] = max(0.001, scenario['market_rate'] + rate_shock)
+        
+        # Add correlation effects between economic factors
+        if scenario['market_rate'] > 0.06:  # High rates scenario
+            scenario['inflation_rate'] *= 1.5
+            scenario['gdp_growth'] *= 0.5
+            scenario['unemployment_rate'] *= 1.3
+        elif scenario['market_rate'] < 0.03:  # Low rates scenario
+            scenario['inflation_rate'] *= 0.7
+            scenario['gdp_growth'] *= 1.3
+            scenario['unemployment_rate'] *= 0.8
+        
+        # Generate random events with increased probability in adverse conditions
+        base_default_prob = config.default_prob * 2
+        base_prepay_prob = config.prepay_prob * 2
+        
+        # Adjust probabilities based on economic conditions
+        if scenario['market_rate'] > 0.07:
+            base_default_prob *= 2
+            base_prepay_prob *= 0.5
+        elif scenario['market_rate'] < 0.03:
+            base_default_prob *= 0.5
+            base_prepay_prob *= 2
+        
+        if scenario['unemployment_rate'] > 0.07:
+            base_default_prob *= 1.5
+        
+        if scenario['gdp_growth'] < 0:
+            base_default_prob *= 1.5
+            base_prepay_prob *= 0.7
+        
+        scenario['default_occurred'] = bool(np.random.random() < base_default_prob)
+        scenario['prepayment_occurred'] = bool(np.random.random() < base_prepay_prob)
+        
+        return scenario
+
+    async def _cache_results(self, user_id: str, response_data: Dict) -> None:
+        """Cache forecast results"""
+        await self.cache.set_forecast_result(user_id, response_data)
 
     async def _batch_save_projections(
         self,
@@ -387,136 +631,13 @@ class CashflowService:
         
         return prepay_factors
 
-    def _generate_random_scenario(self, base_scenario: Dict, config: Dict) -> Dict:
-        """Generate a random economic scenario for Monte Carlo simulation"""
-        # Copy base scenario
-        scenario = base_scenario.copy()
+    def _generate_payment_dates(self, start_date: str, num_periods: int) -> List[str]:
+        """Generate payment dates for a given start date and number of periods"""
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        payment_dates = []
         
-        # Generate correlated random shocks
-        correlation_matrix = config.correlation_matrix if hasattr(config, 'correlation_matrix') else {}
-        rate_volatility = config.rate_volatility if hasattr(config, 'rate_volatility') else 0.01
+        for i in range(num_periods):
+            payment_date = (start_date + pd.DateOffset(months=i)).strftime("%Y-%m-%d")
+            payment_dates.append(payment_date)
         
-        # Generate random shocks
-        rate_shock = np.random.normal(0, rate_volatility)
-        default_shock = np.random.normal(0, 0.2)  # 20% volatility in default rates
-        prepay_shock = np.random.normal(0, 0.3)   # 30% volatility in prepayment rates
-        
-        # Apply correlations
-        if correlation_matrix:
-            rate_default_corr = correlation_matrix.get('rate', {}).get('default', 0.3)
-            rate_prepay_corr = correlation_matrix.get('rate', {}).get('prepay', -0.2)
-            default_prepay_corr = correlation_matrix.get('default', {}).get('prepay', -0.1)
-            
-            # Adjust shocks based on correlations
-            default_shock += rate_shock * rate_default_corr
-            prepay_shock += rate_shock * rate_prepay_corr
-            prepay_shock += default_shock * default_prepay_corr
-        
-        # Apply shocks to economic factors
-        scenario['market_rate'] = max(0, base_scenario['market_rate'] + rate_shock)
-        scenario['inflation_rate'] = max(-0.1, min(0.5, base_scenario['inflation_rate'] + rate_shock * 0.5))
-        scenario['unemployment_rate'] = max(0, min(1, base_scenario['unemployment_rate'] + default_shock * 0.1))
-        scenario['gdp_growth'] = max(-0.5, min(0.5, base_scenario['gdp_growth'] - default_shock * 0.2))
-        scenario['house_price_appreciation'] = max(-0.5, min(0.5, base_scenario['house_price_appreciation'] + rate_shock * 0.3))
-        
-        # Record shock impacts
-        scenario['rate_shock'] = rate_shock
-        scenario['default_occurred'] = default_shock > 0.4  # 40% threshold for default event
-        scenario['prepayment_occurred'] = prepay_shock > 0.6  # 60% threshold for prepayment event
-        
-        return scenario
-
-    async def _run_single_simulation(
-        self,
-        request: CashflowForecastRequest,
-        scenario: Dict
-    ) -> Dict:
-        """Run a single Monte Carlo simulation"""
-        # Apply economic scenario
-        request_copy = request.copy(deep=True)
-        request_copy.economic_factors = scenario
-        
-        # Run simulation
-        projections = await self.generate_forecast(request_copy, "simulation")
-        
-        # Calculate metrics
-        analytics_result = await self.analytics.analyze_cashflows(projections)
-        
-        return {
-            "npv": analytics_result.npv,
-            "default_occurred": scenario['default_occurred'],
-            "prepayment_occurred": scenario['prepayment_occurred'],
-            "rate_shock": scenario['rate_shock']
-        }
-
-    async def _run_monte_carlo_simulation(
-        self,
-        request: CashflowForecastRequest,
-        economic_factors: Dict
-    ) -> MonteCarloResults:
-        """Run enhanced Monte Carlo simulation with stress scenarios"""
-        config = request.monte_carlo_config
-        n_sims = config.num_simulations
-        
-        # Initialize result arrays
-        npv_results = np.zeros(n_sims)
-        default_scenarios = []
-        prepayment_scenarios = []
-        rate_scenarios = []
-        
-        # Base economic scenario
-        base_scenario = economic_factors.copy()
-        
-        # Run simulations in parallel chunks
-        chunk_size = 100
-        n_chunks = (n_sims + chunk_size - 1) // chunk_size
-        
-        async def run_chunk(chunk_idx):
-            start_idx = chunk_idx * chunk_size
-            end_idx = min(start_idx + chunk_size, n_sims)
-            chunk_results = []
-            
-            for i in range(start_idx, end_idx):
-                # Generate random economic scenario
-                scenario = self._generate_random_scenario(base_scenario, config)
-                
-                # Run single simulation
-                result = await self._run_single_simulation(request, scenario)
-                chunk_results.append(result)
-            
-            return chunk_results
-        
-        # Run chunks in parallel
-        tasks = [run_chunk(i) for i in range(n_chunks)]
-        chunk_results = await asyncio.gather(*tasks)
-        
-        # Combine results
-        all_results = []
-        for chunk in chunk_results:
-            all_results.extend(chunk)
-        
-        # Process results
-        npv_distribution = [r['npv'] for r in all_results]
-        default_scenarios = [r for r in all_results if r['default_occurred']]
-        prepayment_scenarios = [r for r in all_results if r['prepayment_occurred']]
-        rate_scenarios = [r for r in all_results if abs(r['rate_shock']) > 0.01]
-        
-        # Calculate confidence intervals
-        confidence_intervals = {
-            'npv': {
-                '95': np.percentile(npv_distribution, [2.5, 97.5]).tolist(),
-                '99': np.percentile(npv_distribution, [0.5, 99.5]).tolist()
-            },
-            'default_rate': {
-                'mean': len(default_scenarios) / n_sims,
-                'std': np.sqrt(len(default_scenarios) * (n_sims - len(default_scenarios)) / (n_sims ** 3))
-            }
-        }
-        
-        return MonteCarloResults(
-            npv_distribution=npv_distribution,
-            default_scenarios=default_scenarios,
-            prepayment_scenarios=prepayment_scenarios,
-            rate_scenarios=rate_scenarios,
-            confidence_intervals=confidence_intervals
-        )
+        return payment_dates
