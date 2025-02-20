@@ -1,114 +1,90 @@
-"""Test configuration and fixtures"""
-import pytest
 import os
+import pytest
+from unittest.mock import MagicMock
 from dotenv import load_dotenv
-from unittest.mock import AsyncMock, MagicMock
-import numpy as np
+from app.core.config import settings
 
 # Load environment variables from .env.test file
 load_dotenv(".env.test")
 
-# Set test environment variables if not present
-if not os.getenv("SUPABASE_URL"):
-    os.environ["SUPABASE_URL"] = "https://test.supabase.co"
-if not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test_key"
-if not os.getenv("REDIS_URL"):
-    os.environ["REDIS_URL"] = "redis://localhost:6379/0"
-if not os.getenv("CELERY_BROKER_URL"):
-    os.environ["CELERY_BROKER_URL"] = "redis://localhost:6379/1"
-if not os.getenv("CELERY_RESULT_BACKEND"):
-    os.environ["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/2"
+# Set test environment variables if not set
+if not settings.NEXT_PUBLIC_SUPABASE_URL:
+    os.environ["NEXT_PUBLIC_SUPABASE_URL"] = "http://localhost:54321"
+    os.environ["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = "test-key"
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test-service-key"
+    os.environ["SUPABASE_JWT_SECRET"] = "test-jwt-secret"
+
+# Set Redis test environment variables
+if not settings.UPSTASH_REDIS_HOST:
+    os.environ["UPSTASH_REDIS_HOST"] = "localhost"
+    os.environ["UPSTASH_REDIS_PORT"] = "6379"
+    os.environ["UPSTASH_REDIS_PASSWORD"] = ""
+
+class MockRedis:
+    def __init__(self):
+        self.data = {}
+        self.ttl = {}
+
+    def get(self, key):
+        return self.data.get(key)
+
+    def setex(self, key, ttl, value):
+        self.data[key] = value
+        self.ttl[key] = ttl
+        return True
+
+    def set(self, key, value):
+        self.data[key] = value
+        return True
+
+    def delete(self, key):
+        if key in self.data:
+            del self.data[key]
+            if key in self.ttl:
+                del self.ttl[key]
+            return True
+        return False
+
+    def incr(self, key):
+        if key not in self.data:
+            self.data[key] = 1
+        else:
+            self.data[key] = int(self.data[key]) + 1
+        return self.data[key]
+
+    def expire(self, key, seconds):
+        if key in self.data:
+            self.ttl[key] = seconds
+            return True
+        return False
+
+@pytest.fixture
+def mock_redis():
+    return MockRedis()
+
+@pytest.fixture(autouse=True)
+def mock_redis_client(monkeypatch, mock_redis):
+    """Automatically mock Redis client for all tests"""
+    def mock_from_url(*args, **kwargs):
+        return mock_redis
+
+    monkeypatch.setattr("redis.Redis.from_url", mock_from_url)
+    return mock_redis
 
 @pytest.fixture(autouse=True)
 def mock_supabase(monkeypatch):
-    """Mock Supabase client for testing"""
-    class MockSupabase:
-        def __init__(self, *args, **kwargs):
-            pass
-            
-        def table(self, *args, **kwargs):
-            return self
-            
-        def insert(self, *args, **kwargs):
-            return {"data": [{"id": "test_id"}]}
-            
-        def execute(self, *args, **kwargs):
-            return {"data": [{"id": "test_id"}]}
+    """Mock Supabase client for tests"""
+    mock = MagicMock()
+    
+    def mock_create_client(*args, **kwargs):
+        return mock
 
-        def upsert(self, *args, **kwargs):
-            return {"data": [{"id": "test_id"}]}
+    # Mock the create_client function directly
+    import app.core.supabase
+    monkeypatch.setattr(app.core.supabase, "create_client", mock_create_client)
+    return mock
 
-        def select(self, *args, **kwargs):
-            return self
-
-        def eq(self, *args, **kwargs):
-            return self
-
-        def single(self, *args, **kwargs):
-            return {"data": {"id": "test_id"}}
-            
-    monkeypatch.setattr("supabase.create_client", lambda *args, **kwargs: MockSupabase())
-
-@pytest.fixture(autouse=True)
-def mock_redis_cache(monkeypatch):
-    """Mock Redis cache for testing"""
-    class MockRedisCache:
-        def __init__(self):
-            self.data = {}
-
-        async def get(self, key):
-            return self.data.get(key)
-
-        async def set(self, key, value, *args, **kwargs):
-            self.data[key] = value
-
-        async def delete(self, key):
-            self.data.pop(key, None)
-
-        async def get_raw(self, key):
-            return self.data.get(key)
-
-    monkeypatch.setattr("app.core.redis_cache.RedisCache", MockRedisCache)
-
-@pytest.fixture(autouse=True)
-def mock_analytics_service(monkeypatch):
-    """Mock AnalyticsService for testing"""
-    class MockAnalyticsService:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def analyze_cashflows(self, cashflows, discount_rate=0.05, run_monte_carlo=True):
-            from app.services.analytics import AnalyticsResult
-            return AnalyticsResult(
-                npv=1000.0,
-                irr=0.08,
-                duration=5.0,
-                convexity=25.0,
-                monte_carlo_results={
-                    "mean": np.array([100.0] * len(cashflows)).tolist(),
-                    "std": np.array([10.0] * len(cashflows)).tolist(),
-                    "percentile_5": np.array([80.0] * len(cashflows)).tolist(),
-                    "percentile_95": np.array([120.0] * len(cashflows)).tolist()
-                }
-            )
-
-    monkeypatch.setattr("app.services.analytics.AnalyticsService", MockAnalyticsService)
-
-@pytest.fixture(autouse=True)
-def mock_economic_factors(monkeypatch):
-    """Mock economic factors for testing"""
-    async def mock_get_economic_factors(*args, **kwargs):
-        return {
-            "market_rate": 0.045,
-            "inflation_rate": 0.02,
-            "unemployment_rate": 0.05,
-            "gdp_growth": 0.025,
-            "house_price_appreciation": 0.03,
-            "month": 6
-        }
-
-    monkeypatch.setattr(
-        "app.services.cashflow.CashflowService._get_economic_factors",
-        mock_get_economic_factors
-    )
+@pytest.fixture
+def mock_analytics():
+    """Mock analytics service"""
+    return MagicMock()

@@ -132,6 +132,9 @@ def test_cashflow_projections(supabase_client, test_loan):
     saved_projections = supabase_client.get_cashflow_projections(supabase_client.user_id, loan_id)
     assert len(saved_projections) == len(projections)
     assert saved_projections[0]["principal"] == projections[0].principal
+    assert saved_projections[0]["interest"] == projections[0].interest
+    assert saved_projections[0]["total_payment"] == projections[0].total_payment
+    assert saved_projections[0]["remaining_balance"] == projections[0].remaining_balance
     
     # Retrieve Monte Carlo results
     monte_carlo = supabase_client.get_monte_carlo_results(supabase_client.user_id, loan_id)

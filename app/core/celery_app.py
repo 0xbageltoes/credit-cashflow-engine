@@ -1,27 +1,32 @@
 from celery import Celery
 from app.core.config import settings
 
-# Configure Redis SSL settings
-broker_use_ssl = {
-    'ssl_cert_reqs': None,
-    'ssl_ca_certs': None,
-    'ssl_certfile': None,
-    'ssl_keyfile': None
-}
-
-redis_backend_use_ssl = broker_use_ssl.copy()
-
 celery_app = Celery(
     "worker",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    broker_connection_retry_on_startup=True
+    broker_use_ssl={
+        'ssl_cert_reqs': 'required',
+    },
+    redis_backend_use_ssl={
+        'ssl_cert_reqs': 'required',
+    }
 )
 
-# Configure SSL settings
+# Configure Celery
 celery_app.conf.update(
-    broker_use_ssl=broker_use_ssl,
-    redis_backend_use_ssl=redis_backend_use_ssl
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+)
+
+# Optional configuration to handle large results
+celery_app.conf.update(
+    result_expires=3600,  # Results expire in 1 hour
+    task_compression='gzip',  # Compress task messages
+    result_compression='gzip',  # Compress results
 )
 
 # Configure task routing
@@ -31,11 +36,6 @@ celery_app.conf.task_routes = {
 
 # Configure general settings
 celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
     worker_concurrency=1,  # Use single worker
     worker_pool="solo",    # Use solo pool for Windows
     task_track_started=True,  # Track when tasks are started

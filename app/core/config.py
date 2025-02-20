@@ -10,21 +10,25 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     
-    # Redis settings
-    REDIS_URL: str
+    # Upstash Redis settings
+    UPSTASH_REDIS_HOST: str
+    UPSTASH_REDIS_PORT: str
+    UPSTASH_REDIS_PASSWORD: str
     
     @property
-    def REDIS_URL_WITH_SSL(self) -> str:
-        """Redis URL with SSL protocol"""
-        return self.REDIS_URL.replace('redis://', 'rediss://')
+    def REDIS_URL(self) -> str:
+        """Upstash Redis URL with SSL"""
+        return f"rediss://:{self.UPSTASH_REDIS_PASSWORD}@{self.UPSTASH_REDIS_HOST}:{self.UPSTASH_REDIS_PORT}?ssl_cert_reqs=required"
     
     @property
     def CELERY_BROKER_URL(self) -> str:
-        return self.REDIS_URL_WITH_SSL
+        """Celery broker URL"""
+        return self.REDIS_URL
     
     @property
     def CELERY_RESULT_BACKEND(self) -> str:
-        return f"{self.REDIS_URL_WITH_SSL}/1"  # Use DB 1 for results
+        """Celery result backend URL"""
+        return self.REDIS_URL
     
     # Computed properties
     @property

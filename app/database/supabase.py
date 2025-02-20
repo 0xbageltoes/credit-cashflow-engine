@@ -54,40 +54,56 @@ class SupabaseClient:
     
     def save_cashflow_projections(self, user_id: str, loan_id: str, response: CashflowForecastResponse) -> None:
         """Save cashflow projections and Monte Carlo results"""
+        # Create forecast run
         forecast_data = {
             "user_id": user_id,
-            "request": {
-                "loan_id": loan_id,
-                "summary_metrics": response.summary_metrics,
-                "computation_time": response.computation_time
-            },
-            "projections": {
-                "cashflows": [proj.model_dump() for proj in response.projections],
-                "monte_carlo_results": response.monte_carlo_results.model_dump() if response.monte_carlo_results else None
-            }
+            "scenario_name": f"Loan {loan_id} Forecast",
+            "total_principal": response.summary_metrics["total_principal"],
+            "total_interest": response.summary_metrics["total_interest"],
+            "npv": response.summary_metrics["npv"],
+            "irr": 0.0,  # TODO: Add to summary metrics
+            "duration": 0.0,  # TODO: Add to summary metrics
+            "convexity": 0.0,  # TODO: Add to summary metrics
+            "monte_carlo_results": response.monte_carlo_results.model_dump() if response.monte_carlo_results else None
         }
         
-        self.client.table("forecast_runs").insert(forecast_data).execute()
+        result = self.client.table("forecast_runs").insert(forecast_data).execute()
+        forecast_id = result.data[0]["id"]
+        
+        # Save projections
+        for projection in response.projections:
+            projection_data = {
+                "forecast_id": forecast_id,
+                "user_id": user_id,
+                "period": projection.period,
+                "date": projection.date,
+                "principal": projection.principal,
+                "interest": projection.interest,
+                "total_payment": projection.total_payment,
+                "remaining_balance": projection.remaining_balance
+            }
+            self.client.table("forecast_projections").insert(projection_data).execute()
     
     def get_cashflow_projections(self, user_id: str, loan_id: str) -> List[Dict]:
         """Get cashflow projections for a loan"""
-        result = self.client.table("forecast_runs").select("projections").eq("user_id", user_id).execute()
-        if not result.data:
+        # First get the latest forecast run
+        forecast_result = self.client.table("forecast_runs").select("id").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+        if not forecast_result.data:
             return []
         
-        # Get the latest forecast run for this loan
-        latest_run = result.data[-1]  # Assuming ordered by created_at
-        return latest_run["projections"]["cashflows"]
+        forecast_id = forecast_result.data[0]["id"]
+        
+        # Then get all projections for this forecast
+        result = self.client.table("forecast_projections").select("*").eq("forecast_id", forecast_id).eq("user_id", user_id).execute()
+        return result.data
     
     def get_monte_carlo_results(self, user_id: str, loan_id: str) -> Optional[Dict]:
         """Get Monte Carlo results for a loan"""
-        result = self.client.table("forecast_runs").select("projections").eq("user_id", user_id).execute()
+        result = self.client.table("forecast_runs").select("monte_carlo_results").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
         if not result.data:
             return None
         
-        # Get the latest forecast run for this loan
-        latest_run = result.data[-1]  # Assuming ordered by created_at
-        return latest_run["projections"]["monte_carlo_results"]
+        return result.data[0]["monte_carlo_results"]
     
     def _log_audit(self, user_id: str, action: str, entity_type: str, entity_id: str, changes: Optional[Dict]) -> None:
         """Log an audit entry"""
