@@ -57,10 +57,10 @@ class SupabaseClient:
         # Create forecast run
         forecast_data = {
             "user_id": user_id,
-            "scenario_name": f"Loan {loan_id} Forecast",
-            "total_principal": response.summary_metrics["total_principal"],
-            "total_interest": response.summary_metrics["total_interest"],
-            "npv": response.summary_metrics["npv"],
+            "scenario_name": f"Loan Analysis {loan_id[:8]}",  # Ensuring non-empty valid string
+            "total_principal": float(response.summary_metrics["total_principal"]),  # Ensure numeric
+            "total_interest": float(response.summary_metrics["total_interest"]),    # Ensure numeric
+            "npv": float(response.summary_metrics["npv"]),                          # Ensure numeric
             "irr": 0.0,  # TODO: Add to summary metrics
             "duration": 0.0,  # TODO: Add to summary metrics
             "convexity": 0.0,  # This field exists in the schema according to migration
