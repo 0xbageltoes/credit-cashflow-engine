@@ -3,88 +3,122 @@ import pytest
 from unittest.mock import MagicMock
 from dotenv import load_dotenv
 from app.core.config import settings
+from app.services.cashflow import CashflowService
+from app.core.redis_cache import RedisCache
+from app.services.analytics import AnalyticsService
+from supabase import create_client, Client
+import uuid
 
-# Load environment variables from .env.test file
-load_dotenv(".env.test")
+# Load environment variables from .env file
+load_dotenv()
 
-# Set test environment variables if not set
-if not settings.NEXT_PUBLIC_SUPABASE_URL:
-    os.environ["NEXT_PUBLIC_SUPABASE_URL"] = "http://localhost:54321"
-    os.environ["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = "test-key"
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test-service-key"
-    os.environ["SUPABASE_JWT_SECRET"] = "test-jwt-secret"
+# Test constants
+TEST_USER_ID = "00000000-0000-0000-0000-000000000000"
 
-# Set Redis test environment variables
-if not settings.UPSTASH_REDIS_HOST:
-    os.environ["UPSTASH_REDIS_HOST"] = "localhost"
-    os.environ["UPSTASH_REDIS_PORT"] = "6379"
-    os.environ["UPSTASH_REDIS_PASSWORD"] = ""
-
-class MockRedis:
-    def __init__(self):
-        self.data = {}
-        self.ttl = {}
-
-    def get(self, key):
-        return self.data.get(key)
-
-    def setex(self, key, ttl, value):
-        self.data[key] = value
-        self.ttl[key] = ttl
-        return True
-
-    def set(self, key, value):
-        self.data[key] = value
-        return True
-
-    def delete(self, key):
-        if key in self.data:
-            del self.data[key]
-            if key in self.ttl:
-                del self.ttl[key]
-            return True
-        return False
-
-    def incr(self, key):
-        if key not in self.data:
-            self.data[key] = 1
-        else:
-            self.data[key] = int(self.data[key]) + 1
-        return self.data[key]
-
-    def expire(self, key, seconds):
-        if key in self.data:
-            self.ttl[key] = seconds
-            return True
-        return False
+@pytest.fixture(scope="session")
+def supabase_client():
+    """Create real Supabase client for tests"""
+    client = create_client(
+        supabase_url=settings.SUPABASE_URL,
+        supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY,
+    )
+    
+    # Set up test data
+    test_scenario_id = str(uuid.uuid4())
+    client.table("cashflow_scenarios").upsert({
+        "id": test_scenario_id,
+        "user_id": TEST_USER_ID,
+        "name": "Test Scenario",
+        "description": "Test scenario for unit tests",
+        "forecast_request": {
+            "loans": [{
+                "principal": 100000,
+                "rate": 0.05,
+                "term": 360,
+                "start_date": "2025-01-01"
+            }]
+        },
+        "tags": ["test"]
+    }).execute()
+    
+    yield client
+    
+    # Clean up test data
+    client.table("cashflow_scenarios").delete().eq("user_id", TEST_USER_ID).execute()
 
 @pytest.fixture
 def mock_redis():
-    return MockRedis()
-
-@pytest.fixture(autouse=True)
-def mock_redis_client(monkeypatch, mock_redis):
-    """Automatically mock Redis client for all tests"""
-    def mock_from_url(*args, **kwargs):
-        return mock_redis
-
-    monkeypatch.setattr("redis.Redis.from_url", mock_from_url)
-    return mock_redis
-
-@pytest.fixture(autouse=True)
-def mock_supabase(monkeypatch):
-    """Mock Supabase client for tests"""
+    """Mock Redis client for tests"""
     mock = MagicMock()
-    
-    def mock_create_client(*args, **kwargs):
-        return mock
-
-    # Mock the create_client function directly
-    import app.core.supabase
-    monkeypatch.setattr(app.core.supabase, "create_client", mock_create_client)
+    mock.get.return_value = None
+    mock.set.return_value = True
+    mock.setex.return_value = True
     return mock
 
 @pytest.fixture
 def mock_analytics():
     """Mock analytics service"""
-    return MagicMock()
+    mock = MagicMock()
+    mock.analyze_cashflows.return_value = {
+        "npv": 1000.0,
+        "irr": 0.08,
+        "duration": 5.0,
+        "convexity": 25.0,
+        "monte_carlo_results": {
+            "mean": [100.0],
+            "std": [10.0],
+            "percentile_5": [80.0],
+            "percentile_95": [120.0]
+        }
+    }
+    return mock
+
+@pytest.fixture
+def cashflow_service(supabase_client, mock_redis, mock_analytics):
+    """Create CashflowService with real Supabase and mocked Redis/Analytics"""
+    return CashflowService(
+        supabase_client=supabase_client,
+        redis_cache=mock_redis,
+        analytics_service=mock_analytics
+    )
+
+@pytest.fixture
+def sample_loan_request():
+    """Create a sample loan request"""
+    return {
+        "loan": {
+            "principal": 100000,
+            "rate": 0.05,
+            "term": 360,
+            "start_date": "2025-01-01",
+            "interest_only_period": 0,
+            "balloon_payment": False
+        },
+        "monte_carlo_config": {
+            "num_simulations": 1000,
+            "volatility": 0.15,
+            "rate_shock": 0.01
+        }
+    }
+
+@pytest.fixture
+def batch_request():
+    """Create a batch request with multiple loans"""
+    return {
+        "loans": [
+            {
+                "principal": 100000,
+                "rate": 0.05,
+                "term": 360,
+                "start_date": "2025-01-01",
+                "interest_only_period": 0,
+                "balloon_payment": False
+            }
+            for _ in range(3)
+        ],
+        "monte_carlo_config": {
+            "num_simulations": 1000,
+            "volatility": 0.15,
+            "rate_shock": 0.01
+        }
+    }

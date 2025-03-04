@@ -26,7 +26,7 @@ class RedisCache:
             print(f"Error getting from cache: {e}")
         return None
 
-    async def get_raw(self, key: str) -> Optional[str]:
+    async def get_raw(self, key: str) -> Optional[str]:                       
         """Get raw value from cache"""
         try:
             data = self.client.get(key)

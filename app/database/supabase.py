@@ -63,7 +63,7 @@ class SupabaseClient:
             "npv": response.summary_metrics["npv"],
             "irr": 0.0,  # TODO: Add to summary metrics
             "duration": 0.0,  # TODO: Add to summary metrics
-            "convexity": 0.0,  # TODO: Add to summary metrics
+            "convexity": 0.0,  # This field exists in the schema according to migration
             "monte_carlo_results": response.monte_carlo_results.model_dump() if response.monte_carlo_results else None
         }
         

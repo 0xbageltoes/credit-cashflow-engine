@@ -32,10 +32,16 @@ class CashflowService:
     
     def __init__(self, supabase_client: Optional[Client] = None, redis_cache: Optional[RedisCache] = None, analytics_service: Optional[AnalyticsService] = None):
         """Initialize the CashflowService with optional dependencies for testing"""
-        self.supabase = supabase_client or create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY
-        )
+        try:
+            self.supabase = supabase_client or create_client(
+                supabase_url=settings.SUPABASE_URL,
+                supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY,
+            )
+            logger.info(f"Successfully initialized Supabase client with URL: {settings.SUPABASE_URL}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client: {str(e)}")
+            raise
+
         self.analytics = analytics_service or AnalyticsService()
         self.cache = redis_cache or RedisCache()
         self.BATCH_SIZE = 1000
@@ -232,6 +238,8 @@ class CashflowService:
                 spread = request.loans[0].rate_spread or 0
                 cap = request.loans[0].rate_cap or float('inf')
                 floor = request.loans[0].rate_floor or 0
+                
+                # Calculate new rate within bounds
                 effective_rate = min(cap, max(floor, market_rate + spread))
             else:
                 effective_rate = request.loans[0].interest_rate

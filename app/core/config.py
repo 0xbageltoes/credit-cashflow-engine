@@ -5,10 +5,12 @@ import ssl
 
 class Settings(BaseSettings):
     # Environment variables as they appear in .env
-    NEXT_PUBLIC_SUPABASE_URL: str
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: str
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
+    NEXT_PUBLIC_SUPABASE_URL: str
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: str
     
     # Upstash Redis settings
     UPSTASH_REDIS_HOST: str
@@ -30,15 +32,6 @@ class Settings(BaseSettings):
         """Celery result backend URL"""
         return self.REDIS_URL
     
-    # Computed properties
-    @property
-    def SUPABASE_URL(self) -> str:
-        return self.NEXT_PUBLIC_SUPABASE_URL
-    
-    @property
-    def SUPABASE_KEY(self) -> str:
-        return self.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    
     # Rate limiting settings
     RATE_LIMIT_REQUESTS: int = 100  # Number of requests
     RATE_LIMIT_WINDOW: int = 3600   # Time window in seconds (1 hour)
@@ -49,17 +42,11 @@ class Settings(BaseSettings):
     
     # Market Data API settings
     FRED_API_KEY: Optional[str] = None
-    FRED_CACHE_TTL: int = 3600  # 1 hour cache for market data
     BLOOMBERG_API_KEY: Optional[str] = None
-    ECB_API_URL: str = "https://sdw-wsrest.ecb.europa.eu/service"
-    
-    # API settings
-    API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Credit Cashflow Engine"
-    
+
     class Config:
         env_file = ".env"
-        extra = "allow"  # Allow extra fields in environment variables
+        env_file_encoding = "utf-8"
 
 @lru_cache()
 def get_settings():
