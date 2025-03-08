@@ -1,0 +1,108 @@
+{
+  "family": "credit-cashflow-engine",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/credit-cashflow-engine-role",
+  "containerDefinitions": [
+    {
+      "name": "credit-cashflow-engine",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/credit-cashflow-engine:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 5555,
+          "hostPort": 5555,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/credit-cashflow-engine",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "app",
+          "awslogs-create-group": "true"
+        }
+      },
+      "environment": [
+        { "name": "ENV", "value": "production" },
+        { "name": "WORKERS", "value": "4" },
+        { "name": "CALCULATION_THREAD_POOL_SIZE", "value": "8" },
+        { "name": "RATE_LIMIT_REQUESTS", "value": "100" },
+        { "name": "RATE_LIMIT_WINDOW", "value": "3600" },
+        { "name": "CELERY_WORKER_CONCURRENCY", "value": "8" },
+        { "name": "PROMETHEUS_ENABLED", "value": "true" },
+        { "name": "LOGGING_JSON_FORMAT", "value": "true" },
+        { "name": "AWS_REGION", "value": "REGION" }
+      ],
+      "secrets": [
+        { "name": "SUPABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SUPABASE_URL::" },
+        { "name": "SUPABASE_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SUPABASE_KEY::" },
+        { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SUPABASE_SERVICE_ROLE_KEY::" },
+        { "name": "SUPABASE_JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SUPABASE_JWT_SECRET::" },
+        { "name": "UPSTASH_REDIS_HOST", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/UPSTASH_REDIS_HOST::" },
+        { "name": "UPSTASH_REDIS_PORT", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/UPSTASH_REDIS_PORT::" },
+        { "name": "UPSTASH_REDIS_PASSWORD", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/UPSTASH_REDIS_PASSWORD::" },
+        { "name": "SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SECRET_KEY::" },
+        { "name": "SENTRY_DSN", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/SENTRY_DSN::" },
+        { "name": "AWS_S3_BUCKET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:credit-cashflow/AWS_S3_BUCKET::" }
+      ],
+      "ulimits": [
+        {
+          "name": "nofile",
+          "softLimit": 65536,
+          "hardLimit": 65536
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "cpu": 2048,
+      "memory": 4096,
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ],
+  "volumes": [],
+  "placementConstraints": [],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "2048",
+  "memory": "4096",
+  "tags": [
+    {
+      "key": "Environment",
+      "value": "Production"
+    },
+    {
+      "key": "Application",
+      "value": "CreditCashflowEngine"
+    },
+    {
+      "key": "Name",
+      "value": "credit-cashflow-engine"
+    }
+  ],
+  "ephemeralStorage": {
+    "sizeInGiB": 30
+  },
+  "proxyConfiguration": null,
+  "inferenceAccelerators": null,
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  }
+}

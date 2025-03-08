@@ -1,0 +1,1728 @@
+C:\Python310\lib\site-packages\pytest_asyncio\plugin.py:207: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+platform win32 -- Python 3.10.4, pytest-8.3.5, pluggy-1.5.0 -- C:\Python310\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\aleanos\1-repo\ws-next\credit-cashflow-engine-2\credit-cashflow-engine
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.8.0, asyncio-0.25.3, cov-6.0.0, mock-3.14.0
+asyncio: mode=auto, asyncio_default_fixture_loop_scope=None
+collecting ... 
+----------------------------- live log collection -----------------------------
+INFO     root:error_tracking.py:14 Skipping Sentry initialization in test environment
+collected 57 items
+
+tests/test_api.py::TestAPIEndpoints::test_health_check ERROR             [  1%]
+tests/test_api.py::TestAPIEndpoints::test_single_forecast ERROR          [  3%]
+tests/test_api.py::TestAPIEndpoints::test_batch_forecast ERROR           [  5%]
+tests/test_api.py::TestAPIEndpoints::test_async_forecast ERROR           [  7%]
+tests/test_api.py::TestAPIEndpoints::test_stress_test ERROR              [  8%]
+tests/test_api.py::TestCaching::test_cache_forecast ERROR                [ 10%]
+tests/test_api.py::TestCaching::test_cache_invalidation ERROR            [ 12%]
+tests/test_api.py::TestCaching::test_cache_compression ERROR             [ 14%]
+tests/test_api.py::test_forecast_endpoint ERROR                          [ 15%]
+tests/test_api.py::test_batch_forecast ERROR                             [ 17%]
+tests/test_api.py::test_async_forecast ERROR                             [ 19%]
+tests/test_api.py::test_stress_test ERROR                                [ 21%]
+tests/test_api_endpoints.py::test_health_endpoint 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/api/v1/health "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 22%]
+tests/test_api_endpoints.py::test_readiness_endpoint 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/api/v1/ready "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 24%]
+tests/test_api_endpoints.py::test_cashflow_calculate_endpoint 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 26%]
+tests/test_api_endpoints.py::test_cashflow_batch_endpoint 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate-batch "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 28%]
+tests/test_api_endpoints.py::test_metrics_endpoint FAILED                [ 29%]
+tests/test_api_endpoints.py::test_invalid_auth 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 31%]
+tests/test_basic.py::test_settings_loaded PASSED                         [ 33%]
+tests/test_basic.py::test_api_path PASSED                                [ 35%]
+tests/test_basic.py::test_supabase_config PASSED                         [ 36%]
+tests/test_basic.py::test_basic_math PASSED                              [ 38%]
+tests/test_cashflow_engine.py::TestCashflowCalculations::test_basic_loan_calculation 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 40%]
+tests/test_cashflow_engine.py::TestCashflowCalculations::test_interest_only_loan 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 42%]
+tests/test_cashflow_engine.py::TestCashflowCalculations::test_balloon_payment 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 43%]
+tests/test_cashflow_engine.py::TestCashflowCalculations::test_hybrid_rate_loan 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 45%]
+tests/test_cashflow_engine.py::TestMonteCarloSimulation::test_monte_carlo_simulation 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 47%]
+tests/test_cashflow_engine.py::TestMonteCarloSimulation::test_stress_scenarios 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 49%]
+tests/test_cashflow_engine.py::TestBatchProcessing::test_batch_forecast 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 50%]
+tests/test_cashflow_engine.py::TestEconomicFactors::test_economic_factor_impacts 
+------------------------------- live log setup --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 52%]
+tests/test_config.py::test_settings_class PASSED                         [ 54%]
+tests/test_config.py::test_settings_loaded PASSED                        [ 56%]
+tests/test_core_functions.py::test_settings PASSED                       [ 57%]
+tests/test_core_functions.py::TestLoanMath::test_monthly_payment_calculation 
+-------------------------------- live log call --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 59%]
+tests/test_core_functions.py::TestLoanMath::test_amortization_schedule 
+-------------------------------- live log call --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 61%]
+tests/test_core_functions.py::TestCacheAndPerformance::test_cache_hit 
+-------------------------------- live log call --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+SKIPPED (Redis is not available, skipping cache verification)            [ 63%]
+tests/test_core_functions.py::TestBatchProcessing::test_batch_calculation 
+-------------------------------- live log call --------------------------------
+INFO     app.services.cashflow:cashflow.py:42 Successfully initialized Supabase client with URL: https://vszqsfntcqidghcwxeij.supabase.co
+PASSED                                                                   [ 64%]
+tests/test_minimal.py::test_basic_math PASSED                            [ 66%]
+tests/test_minimal.py::test_string_operations PASSED                     [ 68%]
+tests/test_minimal.py::test_list_operations PASSED                       [ 70%]
+tests/test_minimal.py::test_env_cors_parsing PASSED                      [ 71%]
+tests/test_minimal.py::test_mock_environment PASSED                      [ 73%]
+tests/test_monitoring.py::TestMonitoring::test_metrics_collection FAILED [ 75%]
+tests/test_monitoring.py::TestMonitoring::test_request_latency FAILED    [ 77%]
+tests/test_monitoring.py::TestMonitoring::test_task_tracking FAILED      [ 78%]
+tests/test_monitoring.py::TestMonitoring::test_system_info 
+-------------------------------- live log call --------------------------------
+INFO     root:monitoring.py:198 System info: version=1.0.0
+INFO     root:monitoring.py:198 System info: environment=test
+INFO     root:monitoring.py:198 System info: python_version=3.10.4
+FAILED                                                                   [ 80%]
+tests/test_monitoring.py::TestPerformance::test_api_response_time 
+-------------------------------- live log call --------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+INFO     httpx:_client.py:1025 HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/health_check?select=%2A&limit=1 "HTTP/2 404 Not Found"
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+FAILED                                                                   [ 82%]
+tests/test_monitoring.py::TestPerformance::test_cache_performance PASSED [ 84%]
+tests/test_monitoring.py::TestPerformance::test_task_queue_performance FAILED [ 85%]
+tests/test_redis_integration.py::TestRedisIntegration::test_basic_operations FAILED [ 87%]
+tests/test_redis_integration.py::TestRedisIntegration::test_compression FAILED [ 89%]
+tests/test_redis_integration.py::TestRedisIntegration::test_task_status FAILED [ 91%]
+tests/test_redis_integration.py::TestRedisIntegration::test_forecast_results FAILED [ 92%]
+tests/test_redis_integration.py::TestRedisIntegration::test_rate_limiter 
+-------------------------------- live log call --------------------------------
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+FAILED                                                                   [ 94%]
+tests/test_redis_integration.py::TestRedisIntegration::test_cache_decorator FAILED [ 96%]
+tests/test_supabase.py::test_loan_crud 
+------------------------------- live log setup --------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/auth/v1/token?grant_type=password "HTTP/2 200 OK"
+-------------------------------- live log call --------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans "HTTP/2 201 Created"
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/audit_log "HTTP/2 201 Created"
+INFO     httpx:_client.py:1025 HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans?select=%2A&id=eq.b79829d8-221e-4a01-a2b3-0edab004fe62&user_id=eq.47a06290-88f7-4668-a187-119ae2f5903f "HTTP/2 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: PATCH https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans?id=eq.b79829d8-221e-4a01-a2b3-0edab004fe62&user_id=eq.47a06290-88f7-4668-a187-119ae2f5903f "HTTP/2 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/audit_log "HTTP/2 201 Created"
+INFO     httpx:_client.py:1025 HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans?select=%2A&user_id=eq.47a06290-88f7-4668-a187-119ae2f5903f "HTTP/2 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: DELETE https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans?id=eq.b79829d8-221e-4a01-a2b3-0edab004fe62&user_id=eq.47a06290-88f7-4668-a187-119ae2f5903f "HTTP/2 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/audit_log "HTTP/2 201 Created"
+INFO     httpx:_client.py:1025 HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/loans?select=%2A&id=eq.b79829d8-221e-4a01-a2b3-0edab004fe62&user_id=eq.47a06290-88f7-4668-a187-119ae2f5903f "HTTP/2 200 OK"
+PASSED                                                                   [ 98%]
+tests/test_supabase.py::test_cashflow_projections 
+------------------------------- live log setup --------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/auth/v1/token?grant_type=password "HTTP/2 200 OK"
+-------------------------------- live log call --------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/forecast_runs "HTTP/2 400 Bad Request"
+FAILED                                                                   [100%]
+
+=================================== ERRORS ====================================
+____________ ERROR at setup of TestAPIEndpoints.test_health_check _____________
+
+cashflow_service = <AsyncMock id='2380570380176'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+___________ ERROR at setup of TestAPIEndpoints.test_single_forecast ___________
+
+cashflow_service = <AsyncMock id='2380571294736'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+___________ ERROR at setup of TestAPIEndpoints.test_batch_forecast ____________
+
+cashflow_service = <AsyncMock id='2380571688864'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+___________ ERROR at setup of TestAPIEndpoints.test_async_forecast ____________
+
+cashflow_service = <AsyncMock id='2380571243040'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+_____________ ERROR at setup of TestAPIEndpoints.test_stress_test _____________
+
+cashflow_service = <AsyncMock id='2380569783520'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+______________ ERROR at setup of TestCaching.test_cache_forecast ______________
+
+cashflow_service = <AsyncMock id='2380571252080'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+____________ ERROR at setup of TestCaching.test_cache_invalidation ____________
+
+cashflow_service = <AsyncMock id='2380571776224'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+____________ ERROR at setup of TestCaching.test_cache_compression _____________
+
+cashflow_service = <AsyncMock id='2380571924928'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+__________________ ERROR at setup of test_forecast_endpoint ___________________
+
+cashflow_service = <AsyncMock id='2380569776656'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+____________________ ERROR at setup of test_batch_forecast ____________________
+
+cashflow_service = <AsyncMock id='2380571241744'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+____________________ ERROR at setup of test_async_forecast ____________________
+
+cashflow_service = <AsyncMock id='2380570381232'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+_____________________ ERROR at setup of test_stress_test ______________________
+
+cashflow_service = <AsyncMock id='2380571171360'>
+
+    @pytest.fixture
+    def client(cashflow_service):
+        """Create test client with mocked services"""
+        app.dependency_overrides = {}  # Reset any existing overrides
+    
+        # Override the get_cashflow_service dependency
+        def get_test_cashflow_service():
+            return cashflow_service
+    
+        # Override the get_current_user dependency
+        async def override_get_current_user():
+            return {"id": TEST_USER_ID, "role": "authenticated"}
+    
+        app.dependency_overrides[get_current_user] = override_get_current_user
+>       app.dependency_overrides[settings.get_cashflow_service] = get_test_cashflow_service
+
+tests\test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = Settings(VERSION='1.0.0', ENVIRONMENT='test', API_V1_STR='/api/v1', WORKERS=4, LOG_LEVEL='info', SUPABASE_URL='https:/...e767', BLOOMBERG_API_KEY='your_bloomberg_api_key', AWS_REGION='us-east-1', AWS_S3_BUCKET='credit-cashflow-engine-data')
+item = 'get_cashflow_service'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra:
+                try:
+                    return pydantic_extra[item]
+                except KeyError as exc:
+                    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Settings' object has no attribute 'get_cashflow_service'
+
+C:\Python310\lib\site-packages\pydantic\main.py:891: AttributeError
+================================== FAILURES ===================================
+____________________________ test_health_endpoint _____________________________
+
+client = <starlette.testclient.TestClient object at 0x0000022A451A99F0>
+
+    def test_health_endpoint(client):
+        """Test the health endpoint"""
+        response = client.get("/api/v1/health")
+>       assert response.status_code == 200
+E       assert 404 == 200
+E        +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_api_endpoints.py:31: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741418650.7265265, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "befbf9ab-98c7-4ab2-999b-b0e620411082", "correlation_id": "befbf9ab-98c7-4ab2-999b-b0e620411082", "method": "GET", "path": "/api/v1/health", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.726526", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.7825384, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.7845068, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "befbf9ab-98c7-4ab2-999b-b0e620411082", "correlation_id": "befbf9ab-98c7-4ab2-999b-b0e620411082", "method": "GET", "path": "/api/v1/health", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.726526", "status_code": 404, "duration": 0.05798029899597168, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.7871523, "level": "INFO", "name": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/health \"HTTP/1.1 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/api/v1/health "HTTP/1.1 404 Not Found"
+___________________________ test_readiness_endpoint ___________________________
+
+client = <starlette.testclient.TestClient object at 0x0000022A451ABB80>
+
+    def test_readiness_endpoint(client):
+        """Test the readiness endpoint"""
+        response = client.get("/api/v1/ready")
+>       assert response.status_code == 200
+E       assert 404 == 200
+E        +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_api_endpoints.py:41: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741418650.8067095, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "5fee899c-d37c-4f21-bdc7-48ebd06127c8", "correlation_id": "5fee899c-d37c-4f21-bdc7-48ebd06127c8", "method": "GET", "path": "/api/v1/ready", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.806709", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.8555899, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.8565629, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "5fee899c-d37c-4f21-bdc7-48ebd06127c8", "correlation_id": "5fee899c-d37c-4f21-bdc7-48ebd06127c8", "method": "GET", "path": "/api/v1/ready", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.806709", "status_code": 404, "duration": 0.04985332489013672, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.8585632, "level": "INFO", "name": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/ready \"HTTP/1.1 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/api/v1/ready "HTTP/1.1 404 Not Found"
+______________________ test_cashflow_calculate_endpoint _______________________
+
+mock_calculate = <MagicMock name='calculate_loan_cashflow' id='2380571684016'>
+client = <starlette.testclient.TestClient object at 0x0000022A45213D00>
+auth_headers = {'Authorization': 'Bearer test_token'}
+
+    @patch("app.services.cashflow.CashflowService.calculate_loan_cashflow")
+    def test_cashflow_calculate_endpoint(mock_calculate, client, auth_headers):
+        """Test the cashflow calculation endpoint with mocked service"""
+        # Set up mock return value
+        mock_calculate.return_value = {
+            "cashflows": [
+                {"period": 1, "date": "2025-02-01", "payment": 536.82, "principal": 120.15, "interest": 416.67, "balance": 99879.85},
+                {"period": 2, "date": "2025-03-01", "payment": 536.82, "principal": 120.65, "interest": 416.17, "balance": 99759.20}
+            ],
+            "summary": {
+                "total_interest": 93255.78,
+                "total_payments": 193255.78,
+                "loan_amount": 100000.00
+            }
+        }
+    
+        # Prepare the request
+        loan_data = {
+            "principal": 100000,
+            "rate": 0.05,
+            "term": 360,
+            "start_date": "2025-01-01"
+        }
+    
+        # Make the request
+        response = client.post("/api/v1/cashflow/calculate", json=loan_data, headers=auth_headers)
+    
+        # Check the response
+>       assert response.status_code == 200
+E       assert 404 == 200
+E        +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_api_endpoints.py:75: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741418650.880242, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "313f78d5-69ec-4ef6-ab71-f98697e5cbf9", "correlation_id": "313f78d5-69ec-4ef6-ab71-f98697e5cbf9", "method": "POST", "path": "/api/v1/cashflow/calculate", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.879713", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.929978, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.929978, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "313f78d5-69ec-4ef6-ab71-f98697e5cbf9", "correlation_id": "313f78d5-69ec-4ef6-ab71-f98697e5cbf9", "method": "POST", "path": "/api/v1/cashflow/calculate", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.879713", "status_code": 404, "duration": 0.050264835357666016, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418650.929978, "level": "INFO", "name": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/cashflow/calculate \"HTTP/1.1 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate "HTTP/1.1 404 Not Found"
+________________________ test_cashflow_batch_endpoint _________________________
+
+mock_batch = <MagicMock name='calculate_batch' id='2380572206720'>
+client = <starlette.testclient.TestClient object at 0x0000022A452131F0>
+auth_headers = {'Authorization': 'Bearer test_token'}
+
+    @patch("app.services.cashflow.CashflowService.calculate_batch")
+    def test_cashflow_batch_endpoint(mock_batch, client, auth_headers):
+        """Test the batch calculation endpoint with mocked service"""
+        # Set up mock return value
+        mock_batch.return_value = {
+            "results": [
+                {
+                    "id": "loan-1",
+                    "summary": {
+                        "total_interest": 93255.78,
+                        "total_payments": 193255.78,
+                        "loan_amount": 100000.00
+                    }
+                },
+                {
+                    "id": "loan-2",
+                    "summary": {
+                        "total_interest": 52500.12,
+                        "total_payments": 152500.12,
+                        "loan_amount": 100000.00
+                    }
+                }
+            ],
+            "execution_time": 0.125
+        }
+    
+        # Prepare the request
+        batch_data = {
+            "loans": [
+                {
+                    "id": "loan-1",
+                    "principal": 100000,
+                    "rate": 0.05,
+                    "term": 360,
+                    "start_date": "2025-01-01"
+                },
+                {
+                    "id": "loan-2",
+                    "principal": 100000,
+                    "rate": 0.035,
+                    "term": 240,
+                    "start_date": "2025-02-01"
+                }
+            ]
+        }
+    
+        # Make the request
+        response = client.post("/api/v1/cashflow/calculate-batch", json=batch_data, headers=auth_headers)
+    
+        # Check the response
+>       assert response.status_code == 200
+E       assert 404 == 200
+E        +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_api_endpoints.py:133: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741418650.9505029, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "5cf138c9-fe75-46b9-afaa-499300526bf8", "correlation_id": "5cf138c9-fe75-46b9-afaa-499300526bf8", "method": "POST", "path": "/api/v1/cashflow/calculate-batch", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.950503", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.0043914, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.0043914, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "5cf138c9-fe75-46b9-afaa-499300526bf8", "correlation_id": "5cf138c9-fe75-46b9-afaa-499300526bf8", "method": "POST", "path": "/api/v1/cashflow/calculate-batch", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:10.950503", "status_code": 404, "duration": 0.053888559341430664, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.0043914, "level": "INFO", "name": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/cashflow/calculate-batch \"HTTP/1.1 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate-batch "HTTP/1.1 404 Not Found"
+____________________________ test_metrics_endpoint ____________________________
+
+args = ()
+keywargs = {'auth_headers': {'Authorization': 'Bearer test_token'}, 'client': <starlette.testclient.TestClient object at 0x0000022A45212710>}
+
+    @wraps(func)
+    def patched(*args, **keywargs):
+>       with self.decoration_helper(patched,
+                                    args,
+                                    keywargs) as (newargs, newkeywargs):
+
+C:\Python310\lib\unittest\mock.py:1366: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python310\lib\contextlib.py:135: in __enter__
+    return next(self.gen)
+C:\Python310\lib\unittest\mock.py:1348: in decoration_helper
+    arg = exit_stack.enter_context(patching)
+C:\Python310\lib\contextlib.py:492: in enter_context
+    result = _cm_type.__enter__(cm)
+C:\Python310\lib\unittest\mock.py:1437: in __enter__
+    original, local = self.get_original()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x0000022A45090430>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <class 'app.services.analytics.AnalyticsService'> does not have the attribute 'get_api_metrics'
+
+C:\Python310\lib\unittest\mock.py:1410: AttributeError
+______________________________ test_invalid_auth ______________________________
+
+client = <starlette.testclient.TestClient object at 0x0000022A45463850>
+
+    def test_invalid_auth(client):
+        """Test that endpoints require authentication"""
+        # Try to access an endpoint without auth headers
+        response = client.post("/api/v1/cashflow/calculate", json={"principal": 100000})
+>       assert response.status_code in [401, 403]  # Either is acceptable
+E       assert 404 in [401, 403]
+E        +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_api_endpoints.py:170: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741418651.3135388, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "f4057769-2c82-4af9-9dbd-00eb3d4d04bb", "correlation_id": "f4057769-2c82-4af9-9dbd-00eb3d4d04bb", "method": "POST", "path": "/api/v1/cashflow/calculate", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:11.313538", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.3610191, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.3630598, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "f4057769-2c82-4af9-9dbd-00eb3d4d04bb", "correlation_id": "f4057769-2c82-4af9-9dbd-00eb3d4d04bb", "method": "POST", "path": "/api/v1/cashflow/calculate", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:24:11.313538", "status_code": 404, "duration": 0.04952096939086914, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741418651.3630598, "level": "INFO", "name": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/cashflow/calculate \"HTTP/1.1 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/cashflow/calculate "HTTP/1.1 404 Not Found"
+___________________ TestMonitoring.test_metrics_collection ____________________
+
+self = <tests.test_monitoring.TestMonitoring object at 0x0000022A450D40D0>
+metrics = <app.core.monitoring.PrometheusMetrics object at 0x0000022A454611E0>
+
+    def test_metrics_collection(self, metrics):
+        """Test metrics collection"""
+        # Test request metrics
+        metrics.track_request("/test", "GET", 200)
+>       assert metrics.request_count._value.get(("/test", "GET", "200")) == 1
+E       AttributeError: 'Counter' object has no attribute '_value'
+
+tests\test_monitoring.py:22: AttributeError
+_____________________ TestMonitoring.test_request_latency _____________________
+
+self = <tests.test_monitoring.TestMonitoring object at 0x0000022A450D4280>
+mock_time = <MagicMock name='time' id='2380571679120'>
+metrics = <app.core.monitoring.PrometheusMetrics object at 0x0000022A45211210>
+
+    @patch("app.core.monitoring.time.time")
+    def test_request_latency(self, mock_time, metrics):
+        """Test request latency tracking"""
+        mock_time.side_effect = [0, 1]  # Simulate 1 second elapsed
+    
+        @metrics.track_request_latency("/test")
+        async def test_func():
+            return "test"
+    
+        # Run the decorated function
+        import asyncio
+>       result = asyncio.run(test_func())
+
+tests\test_monitoring.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\core\monitoring.py:176: in wrapper
+    self.track_latency(path, "GET", latency)
+app\core\monitoring.py:155: in track_latency
+    REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(latency)
+C:\Python310\lib\site-packages\prometheus_client\metrics.py:203: in labels
+    self._metrics[labelvalues] = self.__class__(
+C:\Python310\lib\site-packages\prometheus_client\metrics.py:600: in __init__
+    super().__init__(
+C:\Python310\lib\site-packages\prometheus_client\metrics.py:151: in __init__
+    self._metric_init()
+C:\Python310\lib\site-packages\prometheus_client\metrics.py:626: in _metric_init
+    self._created = time.time()
+C:\Python310\lib\unittest\mock.py:1104: in __call__
+    return self._mock_call(*args, **kwargs)
+C:\Python310\lib\unittest\mock.py:1108: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <MagicMock name='time' id='2380571679120'>, args = (), kwargs = {}
+effect = <list_iterator object at 0x0000022A453B22C0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+>               result = next(effect)
+E               StopIteration
+
+C:\Python310\lib\unittest\mock.py:1165: StopIteration
+
+The above exception was the direct cause of the following exception:
+
+cls = <class '_pytest.runner.CallInfo'>
+func = <function call_and_report.<locals>.<lambda> at 0x0000022A451D9510>
+when = 'call'
+reraise = (<class '_pytest.outcomes.Exit'>, <class 'KeyboardInterrupt'>)
+
+    @classmethod
+    def from_call(
+        cls,
+        func: Callable[[], TResult],
+        when: Literal["collect", "setup", "call", "teardown"],
+        reraise: type[BaseException] | tuple[type[BaseException], ...] | None = None,
+    ) -> CallInfo[TResult]:
+        """Call func, wrapping the result in a CallInfo.
+    
+        :param func:
+            The function to call. Called without arguments.
+        :type func: Callable[[], _pytest.runner.TResult]
+        :param when:
+            The phase in which the function is called.
+        :param reraise:
+            Exception or exceptions that shall propagate if raised by the
+            function, instead of being wrapped in the CallInfo.
+        """
+        excinfo = None
+        start = timing.time()
+        precise_start = timing.perf_counter()
+        try:
+>           result: TResult | None = func()
+
+C:\Python310\lib\site-packages\_pytest\runner.py:341: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python310\lib\site-packages\_pytest\runner.py:242: in <lambda>
+    lambda: runtest_hook(item=item, **kwds), when=when, reraise=reraise
+C:\Python310\lib\site-packages\pluggy\_hooks.py:513: in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+C:\Python310\lib\site-packages\pluggy\_manager.py:120: in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+C:\Python310\lib\site-packages\_pytest\threadexception.py:92: in pytest_runtest_call
+    yield from thread_exception_runtest_hook()
+C:\Python310\lib\site-packages\_pytest\threadexception.py:68: in thread_exception_runtest_hook
+    yield
+C:\Python310\lib\site-packages\_pytest\unraisableexception.py:95: in pytest_runtest_call
+    yield from unraisable_exception_runtest_hook()
+C:\Python310\lib\site-packages\_pytest\unraisableexception.py:70: in unraisable_exception_runtest_hook
+    yield
+C:\Python310\lib\site-packages\_pytest\logging.py:846: in pytest_runtest_call
+    yield from self._runtest_for(item, "call")
+C:\Python310\lib\site-packages\_pytest\logging.py:829: in _runtest_for
+    yield
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <CaptureManager _method='fd' _global_capturing=<MultiCapture out=<FDCapture 1 oldfd=5 _state='suspended' tmpfile=<_io...._io.TextIOWrapper name='nul' mode='r' encoding='utf-8'>> _state='suspended' _in_suspended=False> _capture_fixture=None>
+item = <Function test_request_latency>
+
+    @hookimpl(wrapper=True)
+    def pytest_runtest_call(self, item: Item) -> Generator[None]:
+        with self.item_capture("call", item):
+>           return (yield)
+E           RuntimeError: generator raised StopIteration
+
+C:\Python310\lib\site-packages\_pytest\capture.py:898: RuntimeError
+______________________ TestMonitoring.test_task_tracking ______________________
+
+self = <tests.test_monitoring.TestMonitoring object at 0x0000022A450D4430>
+metrics = <app.core.monitoring.PrometheusMetrics object at 0x0000022A477583D0>
+
+    def test_task_tracking(self, metrics):
+        """Test task tracking"""
+        @metrics.track_task("test_task")
+        async def test_task():
+            return "completed"
+    
+        # Run the task
+        import asyncio
+        result = asyncio.run(test_task())
+        assert result == "completed"
+    
+        # Verify task metrics
+>       assert metrics.active_tasks._value.get(("test_task",)) == 0
+E       AttributeError: 'PrometheusMetrics' object has no attribute 'active_tasks'
+
+tests\test_monitoring.py:59: AttributeError
+_______________________ TestMonitoring.test_system_info _______________________
+
+self = <tests.test_monitoring.TestMonitoring object at 0x0000022A450D4610>
+metrics = <app.core.monitoring.PrometheusMetrics object at 0x0000022A45195B10>
+
+    def test_system_info(self, metrics):
+        """Test system info collection"""
+        test_info = {
+            "version": "1.0.0",
+            "environment": "test",
+            "python_version": "3.10.4"
+        }
+        metrics.update_system_info(test_info)
+>       assert metrics.system_info._value == test_info
+E       AttributeError: 'PrometheusMetrics' object has no attribute 'system_info'
+
+tests\test_monitoring.py:69: AttributeError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741419021.4881907, "level": "INFO", "name": "root", "message": "System info: version=1.0.0", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419021.4891777, "level": "INFO", "name": "root", "message": "System info: environment=test", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419021.4891777, "level": "INFO", "name": "root", "message": "System info: python_version=3.10.4", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     root:monitoring.py:198 System info: version=1.0.0
+INFO     root:monitoring.py:198 System info: environment=test
+INFO     root:monitoring.py:198 System info: python_version=3.10.4
+___________________ TestPerformance.test_api_response_time ____________________
+
+self = <tests.test_monitoring.TestPerformance object at 0x0000022A450D4A60>
+client = <starlette.testclient.TestClient object at 0x0000022A4775B4F0>
+
+    def test_api_response_time(self, client):
+        """Test API response time"""
+        start_time = pytest.importorskip("time").time()
+        response = client.get("/health")
+        end_time = pytest.importorskip("time").time()
+    
+        assert response.status_code == 200
+>       assert end_time - start_time < 1.0  # Response should be under 1 second
+E       assert (1741419024.4360902 - 1741419021.5058324) < 1.0
+
+tests\test_monitoring.py:81: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741419021.5087395, "level": "INFO", "name": "app.core.middleware", "message": "Request started", "request_id": "254488d9-8df0-44d5-83ff-9fc3d4ae4dcd", "correlation_id": "254488d9-8df0-44d5-83ff-9fc3d4ae4dcd", "method": "GET", "path": "/health", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:30:21.508739", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419022.084079, "level": "INFO", "name": "httpx", "message": "HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/health_check?select=%2A&limit=1 \"HTTP/2 404 Not Found\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.4360902, "level": "INFO", "name": "app.core.middleware", "message": "Request completed", "request_id": "254488d9-8df0-44d5-83ff-9fc3d4ae4dcd", "correlation_id": "254488d9-8df0-44d5-83ff-9fc3d4ae4dcd", "method": "GET", "path": "/health", "query_params": "", "client_ip": "testclient", "user_agent": "testclient", "start_time": "2025-03-08T02:30:21.508739", "status_code": 200, "duration": 2.9273507595062256, "completed": true, "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.4360902, "level": "INFO", "name": "httpx", "message": "HTTP Request: GET http://testserver/health \"HTTP/1.1 200 OK\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     app.core.middleware:middleware.py:120 Request started
+INFO     httpx:_client.py:1025 HTTP Request: GET https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/health_check?select=%2A&limit=1 "HTTP/2 404 Not Found"
+INFO     app.core.middleware:middleware.py:141 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+_________________ TestPerformance.test_task_queue_performance _________________
+
+args = (<tests.test_monitoring.TestPerformance object at 0x0000022A450D4D90>,)
+keywargs = {}
+
+    @wraps(func)
+    def patched(*args, **keywargs):
+>       with self.decoration_helper(patched,
+                                    args,
+                                    keywargs) as (newargs, newkeywargs):
+
+C:\Python310\lib\unittest\mock.py:1366: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python310\lib\contextlib.py:135: in __enter__
+    return next(self.gen)
+C:\Python310\lib\unittest\mock.py:1348: in decoration_helper
+    arg = exit_stack.enter_context(patching)
+C:\Python310\lib\contextlib.py:492: in enter_context
+    result = _cm_type.__enter__(cm)
+C:\Python310\lib\unittest\mock.py:1437: in __enter__
+    original, local = self.get_original()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x0000022A450B3880>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.core.celery_app' from 'C:\\Users\\aleanos\\1-repo\\ws-next\\credit-cashflow-engine-2\\credit-cashflow-engine\\app\\core\\celery_app.py'> does not have the attribute 'celery'
+
+C:\Python310\lib\unittest\mock.py:1410: AttributeError
+_________________ TestRedisIntegration.test_basic_operations __________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D5B10>
+redis_cache = <app.core.redis_cache.RedisCache object at 0x0000022A43CB49A0>
+
+    async def test_basic_operations(self, redis_cache):
+        """Test basic Redis operations (set, get, delete)"""
+        # Test set and get
+        test_data = {"key": "value", "number": 42}
+        success = await redis_cache.set_async("test_key", test_data)
+>       assert success is True
+E       assert False is True
+
+tests\test_redis_integration.py:25: AssertionError
+____________________ TestRedisIntegration.test_compression ____________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D5C00>
+redis_cache = <app.core.redis_cache.RedisCache object at 0x0000022A43CB49A0>
+
+    async def test_compression(self, redis_cache):
+        """Test compression for large data"""
+        # Create large data
+        large_data = {
+            "data": "x" * 10000,  # Create string that will be compressed well
+            "numbers": list(range(1000))
+        }
+    
+        # Set with compression
+        success = await redis_cache.set_async("large_key", large_data, compress=True)
+>       assert success is True
+E       assert False is True
+
+tests\test_redis_integration.py:47: AssertionError
+____________________ TestRedisIntegration.test_task_status ____________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D49A0>
+redis_cache = <app.core.redis_cache.RedisCache object at 0x0000022A43CB49A0>
+
+    async def test_task_status(self, redis_cache):
+        """Test task status operations"""
+        task_id = "test_task_123"
+        status = {
+            "status": "running",
+            "progress": 50,
+            "message": "Processing data"
+        }
+    
+        # Set task status
+        await redis_cache.set_task_status(task_id, status)
+    
+        # Get task status
+        result = await redis_cache.get_task_status(task_id)
+>       assert result == status
+E       AssertionError: assert None == {'message': 'Processing data', 'progress': 50, 'status': 'running'}
+
+tests\test_redis_integration.py:71: AssertionError
+_________________ TestRedisIntegration.test_forecast_results __________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D5CF0>
+redis_cache = <app.core.redis_cache.RedisCache object at 0x0000022A43CB49A0>
+
+    async def test_forecast_results(self, redis_cache):
+        """Test forecast result operations"""
+        task_id = "forecast_123"
+        forecast_data = {
+            "cashflows": [100, 200, 300],
+            "metrics": {"irr": 0.15, "npv": 1000},
+            "scenarios": ["base", "stress"]
+        }
+    
+        # Set forecast result
+        await redis_cache.set_forecast_result(task_id, forecast_data)
+    
+        # Get forecast result
+        result = await redis_cache.get_forecast_result(task_id)
+>       assert result == forecast_data
+E       AssertionError: assert None == {'cashflows': [100, 200, 300], 'metrics': {'irr': 0.15, 'npv': 1000}, 'scenarios': ['base', 'stress']}
+
+tests\test_redis_integration.py:90: AssertionError
+___________________ TestRedisIntegration.test_rate_limiter ____________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D5F60>
+rate_limiter = <app.core.cache.RateLimiter object at 0x0000022A4524FFA0>
+
+    def test_rate_limiter(self, rate_limiter):
+        """Test rate limiting functionality"""
+        user_id = "test_user"
+        max_requests = 5
+        window_seconds = 1
+    
+        # Should not be rate limited initially
+        assert not rate_limiter.is_rate_limited(user_id, max_requests, window_seconds)
+    
+        # Make several requests
+        for _ in range(max_requests):
+            rate_limiter.is_rate_limited(user_id, max_requests, window_seconds)
+    
+        # Should be rate limited after max_requests
+>       assert rate_limiter.is_rate_limited(user_id, max_requests, window_seconds)
+E       AssertionError: assert False
+E        +  where False = is_rate_limited('test_user', 5, 1)
+E        +    where is_rate_limited = <app.core.cache.RateLimiter object at 0x0000022A4524FFA0>.is_rate_limited
+
+tests\test_redis_integration.py:109: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741419024.771294, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.809248, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.86739, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.9078193, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.944895, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419024.9915087, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+{"timestamp": 1741419025.0450208, "level": "ERROR", "name": "root", "message": "Error checking rate limit: Connection closed by server.", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+ERROR    root:cache.py:214 Error checking rate limit: Connection closed by server.
+__________________ TestRedisIntegration.test_cache_decorator __________________
+
+self = <tests.test_redis_integration.TestRedisIntegration object at 0x0000022A450D6170>
+redis_cache = <app.core.redis_cache.RedisCache object at 0x0000022A43CB49A0>
+
+    async def test_cache_decorator(self, redis_cache):
+        """Test cache decorator functionality"""
+        call_count = 0
+    
+        @cache_response(ttl=10)
+        async def test_function(arg1, arg2):
+            nonlocal call_count
+            call_count += 1
+            return {"sum": arg1 + arg2}
+    
+        # First call should execute the function
+        result1 = await test_function(1, 2)
+        assert result1 == {"sum": 3}
+        assert call_count == 1
+    
+        # Second call should use cached result
+        result2 = await test_function(1, 2)
+        assert result2 == {"sum": 3}
+>       assert call_count == 1  # Call count shouldn't increase
+E       assert 2 == 1
+
+tests\test_redis_integration.py:129: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Error getting from cache: Connection closed by server.
+Error setting cache: Connection closed by server.
+Error getting from cache: Connection closed by server.
+Error setting cache: Connection closed by server.
+__________________________ test_cashflow_projections __________________________
+
+supabase_client = <app.database.supabase.SupabaseClient object at 0x0000022A455B0790>
+test_loan = LoanData(principal=100000.0, interest_rate=0.05, term_months=360, start_date='2025-03-08', prepayment_assumption=0.02, interest_only_periods=0, balloon_payment=None, rate_type='fixed', rate_spread=None, rate_cap=None, rate_floor=None)
+
+    def test_cashflow_projections(supabase_client, test_loan):
+        """Test saving and retrieving cashflow projections"""
+        loan_id = str(uuid4())
+    
+        # Create sample projections
+        projections = [
+            CashflowProjection(
+                period=i + 1,
+                date=(datetime.now() + pd.DateOffset(months=i)).strftime("%Y-%m-%d"),
+                principal=1000.0,
+                interest=50.0,
+                total_payment=1050.0,
+                remaining_balance=99000.0 - (i * 1000.0),
+                is_interest_only=False,
+                is_balloon=False,
+                rate=0.05
+            )
+            for i in range(12)
+        ]
+    
+        # Create sample Monte Carlo results
+        monte_carlo_results = MonteCarloResults(
+            npv_distribution=[100000.0 + i * 1000.0 for i in range(10)],
+            default_scenarios=[{"period": i, "probability": 0.02} for i in range(5)],
+            prepayment_scenarios=[{"period": i, "probability": 0.05} for i in range(5)],
+            rate_scenarios=[{"period": i, "rate": 0.05} for i in range(5)],
+            confidence_intervals={
+                "npv": {
+                    "95": [95000.0, 105000.0],
+                    "99": [93000.0, 107000.0]
+                }
+            },
+            var_metrics={
+                "var_95": 5000.0,
+                "var_99": 7000.0,
+                "expected_shortfall": 6000.0
+            },
+            sensitivity_analysis={
+                "rate_sensitivity": -0.8
+            }
+        )
+    
+        # Create response object
+        response = CashflowForecastResponse(
+            projections=projections,
+            monte_carlo_results=monte_carlo_results,
+            summary_metrics={
+                "total_principal": 100000.0,
+                "total_interest": 5000.0,
+                "total_payments": 105000.0,
+                "npv": 100000.0
+            },
+            computation_time=1.5
+        )
+    
+        # Save projections
+>       supabase_client.save_cashflow_projections(supabase_client.user_id, loan_id, response)
+
+tests\test_supabase.py:129: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\database\supabase.py:70: in save_cashflow_projections
+    result = self.client.table("forecast_runs").insert(forecast_data).execute()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <postgrest._sync.request_builder.SyncQueryRequestBuilder object at 0x0000022A455B03A0>
+
+    def execute(self) -> APIResponse[_ReturnT]:
+        """Execute the query.
+    
+        .. tip::
+            This is the last method called, after the query is built.
+    
+        Returns:
+            :class:`APIResponse`
+    
+        Raises:
+            :class:`APIError` If the API raised an error.
+        """
+        r = self.session.request(
+            self.http_method,
+            self.path,
+            json=self.json,
+            params=self.params,
+            headers=self.headers,
+        )
+        try:
+            if r.is_success:
+                if self.http_method != "HEAD":
+                    body = r.text
+                    if self.headers.get("Accept") == "text/csv":
+                        return body
+                    if self.headers.get(
+                        "Accept"
+                    ) and "application/vnd.pgrst.plan" in self.headers.get("Accept"):
+                        if "+json" not in self.headers.get("Accept"):
+                            return body
+                return APIResponse[_ReturnT].from_http_request_response(r)
+            else:
+>               raise APIError(r.json())
+E               postgrest.exceptions.APIError: {'code': 'PGRST204', 'details': None, 'hint': None, 'message': "Could not find the 'convexity' column of 'forecast_runs' in the schema cache"}
+
+C:\Python310\lib\site-packages\postgrest\_sync\request_builder.py:78: APIError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": 1741419028.918809, "level": "INFO", "name": "httpx", "message": "HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/auth/v1/token?grant_type=password \"HTTP/2 200 OK\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+----------------------------- Captured log setup ------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/auth/v1/token?grant_type=password "HTTP/2 200 OK"
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": 1741419029.3188157, "level": "INFO", "name": "httpx", "message": "HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/forecast_runs \"HTTP/2 400 Bad Request\"", "service": "credit-cashflow-engine", "environment": "test", "version": "1.0.0"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST https://vszqsfntcqidghcwxeij.supabase.co/rest/v1/forecast_runs "HTTP/2 400 Bad Request"
+============================== warnings summary ===============================
+..\..\..\..\..\..\Python310\lib\site-packages\pydantic\_internal\_config.py:295
+  C:\Python310\lib\site-packages\pydantic\_internal\_config.py:295: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.10/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+..\..\..\..\..\..\Python310\lib\site-packages\pythonjsonlogger\jsonlogger.py:11
+  C:\Python310\lib\site-packages\pythonjsonlogger\jsonlogger.py:11: DeprecationWarning: pythonjsonlogger.jsonlogger has been moved to pythonjsonlogger.json
+    warnings.warn(
+
+app\core\error_tracking.py:45: 1 warning
+tests/test_api_endpoints.py: 20 warnings
+tests/test_cashflow_engine.py: 8 warnings
+tests/test_core_functions.py: 4 warnings
+tests/test_monitoring.py: 7 warnings
+tests/test_redis_integration.py: 7 warnings
+tests/test_supabase.py: 12 warnings
+  C:\Users\aleanos\1-repo\ws-next\credit-cashflow-engine-2\credit-cashflow-engine\app\core\error_tracking.py:45: SentryHubDeprecationWarning: `sentry_sdk.Hub` is deprecated and will be removed in a future major release. Please consult our 1.x to 2.x migration guide for details on how to migrate `Hub` usage to the new API: https://docs.sentry.io/platforms/python/migration/1.x-to-2.x
+    scope = sentry_sdk.Hub.current.scope
+
+tests/test_cashflow_engine.py::TestCashflowCalculations::test_basic_loan_calculation
+  C:\Python310\lib\site-packages\pytest_asyncio\plugin.py:867: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  C:\Users\aleanos\1-repo\ws-next\credit-cashflow-engine-2\credit-cashflow-engine\tests\test_cashflow_engine.py:30
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "loop_scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/test_redis_integration.py::TestRedisIntegration::test_rate_limiter
+  tests\test_redis_integration.py:95: PytestWarning: The test <Function test_rate_limiter> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_rate_limiter(self, rate_limiter):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_api_endpoints.py::test_health_endpoint - assert 404 == 200
+FAILED tests/test_api_endpoints.py::test_readiness_endpoint - assert 404 == 200
+FAILED tests/test_api_endpoints.py::test_cashflow_calculate_endpoint - assert...
+FAILED tests/test_api_endpoints.py::test_cashflow_batch_endpoint - assert 404...
+FAILED tests/test_api_endpoints.py::test_metrics_endpoint - AttributeError: <...
+FAILED tests/test_api_endpoints.py::test_invalid_auth - assert 404 in [401, 403]
+FAILED tests/test_monitoring.py::TestMonitoring::test_metrics_collection - At...
+FAILED tests/test_monitoring.py::TestMonitoring::test_request_latency - Runti...
+FAILED tests/test_monitoring.py::TestMonitoring::test_task_tracking - Attribu...
+FAILED tests/test_monitoring.py::TestMonitoring::test_system_info - Attribute...
+FAILED tests/test_monitoring.py::TestPerformance::test_api_response_time - as...
+FAILED tests/test_monitoring.py::TestPerformance::test_task_queue_performance
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_basic_operations
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_compression
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_task_status
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_forecast_results
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_rate_limiter
+FAILED tests/test_redis_integration.py::TestRedisIntegration::test_cache_decorator
+FAILED tests/test_supabase.py::test_cashflow_projections - postgrest.exceptio...
+ERROR tests/test_api.py::TestAPIEndpoints::test_health_check - AttributeError...
+ERROR tests/test_api.py::TestAPIEndpoints::test_single_forecast - AttributeEr...
+ERROR tests/test_api.py::TestAPIEndpoints::test_batch_forecast - AttributeErr...
+ERROR tests/test_api.py::TestAPIEndpoints::test_async_forecast - AttributeErr...
+ERROR tests/test_api.py::TestAPIEndpoints::test_stress_test - AttributeError:...
+ERROR tests/test_api.py::TestCaching::test_cache_forecast - AttributeError: '...
+ERROR tests/test_api.py::TestCaching::test_cache_invalidation - AttributeErro...
+ERROR tests/test_api.py::TestCaching::test_cache_compression - AttributeError...
+ERROR tests/test_api.py::test_forecast_endpoint - AttributeError: 'Settings' ...
+ERROR tests/test_api.py::test_batch_forecast - AttributeError: 'Settings' obj...
+ERROR tests/test_api.py::test_async_forecast - AttributeError: 'Settings' obj...
+ERROR tests/test_api.py::test_stress_test - AttributeError: 'Settings' object...
+= 19 failed, 25 passed, 1 skipped, 63 warnings, 12 errors in 382.45s (0:06:22) =
+sys:1: RuntimeWarning: coroutine 'TestMonitoring.test_request_latency.<locals>.test_func' was never awaited
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback

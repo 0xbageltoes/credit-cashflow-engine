@@ -1,0 +1,178 @@
+"""
+Tests for the API endpoints of the Credit Cashflow Engine
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+import datetime
+import uuid
+from unittest.mock import patch, MagicMock
+
+# Import the app
+from app.main import app
+
+
+@pytest.fixture
+def client():
+    """Create a test client for the API"""
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def auth_headers():
+    """Mocked authentication headers"""
+    return {"Authorization": "Bearer test_token"}
+
+
+def test_health_endpoint(client):
+    """Test the health endpoint"""
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "version" in data
+    assert "uptime" in data
+
+
+def test_readiness_endpoint(client):
+    """Test the readiness endpoint"""
+    response = client.get("/api/v1/ready")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] in ["ok", "ready"]
+    assert "checks" in data
+
+
+@patch("app.services.cashflow.CashflowService.calculate_loan_cashflow")
+def test_cashflow_calculate_endpoint(mock_calculate, client, auth_headers):
+    """Test the cashflow calculation endpoint with mocked service"""
+    # Set up mock return value
+    mock_calculate.return_value = {
+        "cashflows": [
+            {"period": 1, "date": "2025-02-01", "payment": 536.82, "principal": 120.15, "interest": 416.67, "balance": 99879.85},
+            {"period": 2, "date": "2025-03-01", "payment": 536.82, "principal": 120.65, "interest": 416.17, "balance": 99759.20}
+        ],
+        "summary": {
+            "total_interest": 93255.78,
+            "total_payments": 193255.78,
+            "loan_amount": 100000.00
+        }
+    }
+    
+    # Prepare the request
+    loan_data = {
+        "principal": 100000,
+        "rate": 0.05,
+        "term": 360,
+        "start_date": "2025-01-01"
+    }
+    
+    # Make the request
+    response = client.post("/api/v1/cashflow/calculate", json=loan_data, headers=auth_headers)
+    
+    # Check the response
+    assert response.status_code == 200
+    data = response.json()
+    assert "cashflows" in data
+    assert "summary" in data
+    assert len(data["cashflows"]) == 2  # Mocked to return 2 periods
+    assert data["summary"]["loan_amount"] == 100000.00
+
+
+@patch("app.services.cashflow.CashflowService.calculate_batch")
+def test_cashflow_batch_endpoint(mock_batch, client, auth_headers):
+    """Test the batch calculation endpoint with mocked service"""
+    # Set up mock return value
+    mock_batch.return_value = {
+        "results": [
+            {
+                "id": "loan-1",
+                "summary": {
+                    "total_interest": 93255.78,
+                    "total_payments": 193255.78,
+                    "loan_amount": 100000.00
+                }
+            },
+            {
+                "id": "loan-2",
+                "summary": {
+                    "total_interest": 52500.12,
+                    "total_payments": 152500.12,
+                    "loan_amount": 100000.00
+                }
+            }
+        ],
+        "execution_time": 0.125
+    }
+    
+    # Prepare the request
+    batch_data = {
+        "loans": [
+            {
+                "id": "loan-1",
+                "principal": 100000,
+                "rate": 0.05,
+                "term": 360,
+                "start_date": "2025-01-01"
+            },
+            {
+                "id": "loan-2",
+                "principal": 100000,
+                "rate": 0.035,
+                "term": 240,
+                "start_date": "2025-02-01"
+            }
+        ]
+    }
+    
+    # Make the request
+    response = client.post("/api/v1/cashflow/calculate-batch", json=batch_data, headers=auth_headers)
+    
+    # Check the response
+    assert response.status_code == 200
+    data = response.json()
+    assert "results" in data
+    assert "execution_time" in data
+    assert len(data["results"]) == 2
+
+
+@patch("app.services.analytics.AnalyticsService.get_api_metrics")
+def test_metrics_endpoint(mock_metrics, client, auth_headers):
+    """Test the metrics endpoint with mocked analytics service"""
+    # Set up mock return value
+    mock_metrics.return_value = {
+        "total_requests": 1250,
+        "average_response_time": 0.125,
+        "error_rate": 0.01,
+        "requests_by_endpoint": {
+            "/api/v1/cashflow/calculate": 850,
+            "/api/v1/cashflow/calculate-batch": 400
+        }
+    }
+    
+    # Make the request
+    response = client.get("/api/v1/metrics", headers=auth_headers)
+    
+    # Check the response
+    assert response.status_code == 200
+    data = response.json()
+    assert "total_requests" in data
+    assert "average_response_time" in data
+    assert "error_rate" in data
+    assert "requests_by_endpoint" in data
+
+
+def test_invalid_auth(client):
+    """Test that endpoints require authentication"""
+    # Try to access an endpoint without auth headers
+    response = client.post("/api/v1/cashflow/calculate", json={"principal": 100000})
+    assert response.status_code in [401, 403]  # Either is acceptable
+    
+    # Try with invalid auth token
+    response = client.post(
+        "/api/v1/cashflow/calculate", 
+        json={"principal": 100000},
+        headers={"Authorization": "Bearer invalid_token"}
+    )
+    assert response.status_code in [401, 403]

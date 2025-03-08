@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
 import asyncio
 import logging
+from unittest.mock import MagicMock
 
 from app.models.cashflow import (
     CashflowProjection,
@@ -24,6 +25,7 @@ from app.core.config import settings
 from app.services.analytics import AnalyticsService
 from app.core.redis_cache import RedisCache
 from supabase import create_client, Client
+from app.core.models import LoanRequest
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,128 @@ class CashflowService:
         self.analytics = analytics_service or AnalyticsService()
         self.cache = redis_cache or RedisCache()
         self.BATCH_SIZE = 1000
+        
+    def calculate_loan_cashflow(self, loan_request: LoanRequest) -> Dict[str, Any]:
+        """
+        Calculate loan cashflows from a simple loan request.
+        This method is primarily used for testing core functionality.
+        
+        Args:
+            loan_request: A LoanRequest object containing loan details
+            
+        Returns:
+            Dict with cashflow projections
+        """
+        # Cache lookup key
+        cache_key = loan_request.cache_key
+        
+        # Try to get from cache, but with a safety check
+        # to ensure we're not using a MagicMock
+        try:
+            cached_result = self.cache.get(cache_key)
+            if cached_result and isinstance(cached_result, dict) and "cashflows" in cached_result:
+                return cached_result
+        except Exception:
+            # If any error occurs in cache lookup, just continue with calculation
+            pass
+            
+        # Calculate the monthly payment
+        principal = loan_request.principal
+        rate = loan_request.rate
+        term = loan_request.term
+        start_date = datetime.strptime(loan_request.start_date, '%Y-%m-%d')
+        
+        # Calculate the monthly payment using the PMT formula
+        monthly_rate = rate / 12
+        payment = abs(npf.pmt(monthly_rate, term, principal))
+        
+        # Generate the amortization schedule
+        cashflows = []
+        remaining_balance = principal
+        
+        for period in range(1, term + 1):
+            # Calculate interest and principal for this period
+            interest_payment = remaining_balance * monthly_rate
+            principal_payment = payment - interest_payment
+            remaining_balance -= principal_payment
+            
+            # For the last payment, adjust to account for rounding errors
+            if period == term:
+                principal_payment += remaining_balance
+                remaining_balance = 0
+            
+            # Calculate the payment date
+            payment_date = start_date.replace(
+                year=start_date.year + ((start_date.month + period - 1) // 12),
+                month=((start_date.month + period - 1) % 12) + 1
+            )
+            
+            cashflows.append({
+                "period": period,
+                "date": payment_date.strftime('%Y-%m-%d'),
+                "payment": float(payment),
+                "principal": float(principal_payment),
+                "interest": float(interest_payment),
+                "remaining_balance": float(max(0, remaining_balance)),
+                "balance": float(max(0, remaining_balance))  # Added for compatibility with tests
+            })
+        
+        # Calculate summary metrics
+        total_principal = sum(cf["principal"] for cf in cashflows)
+        total_interest = sum(cf["interest"] for cf in cashflows)
+        total_payments = total_principal + total_interest
+        
+        result = {
+            "cashflows": cashflows,
+            "summary": {
+                "monthly_payment": float(payment),
+                "total_principal": float(total_principal),
+                "total_interest": float(total_interest),
+                "total_payments": float(total_payments),
+                "term_months": term,
+                "loan_amount": float(principal)  # Add loan_amount field
+            }
+        }
+        
+        # Cache the result
+        self.cache.set(loan_request.cache_key, result, 3600)  # Cache for 1 hour
+        
+        return result
+        
+    def calculate_batch(self, batch_request: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """
+        Process a batch of loan calculations.
+        
+        Args:
+            batch_request: A dictionary containing a list of loan requests
+            
+        Returns:
+            Dictionary with results for each loan
+        """
+        results = {}
+        loans = batch_request.get("loans", [])
+        
+        for loan_data in loans:
+            loan_id = loan_data.get("id", f"loan-{len(results)}")
+            
+            # Convert dictionary to LoanRequest object
+            loan_request = LoanRequest(
+                principal=loan_data.get("principal"),
+                rate=loan_data.get("rate"),
+                term=loan_data.get("term"),
+                start_date=loan_data.get("start_date")
+            )
+            
+            # Calculate cashflow for this loan
+            results[loan_id] = self.calculate_loan_cashflow(loan_request)
+            
+        return {
+            "results": results,
+            "meta": {
+                "processed": len(results),
+                "timestamp": datetime.now().isoformat()
+            }
+        }
 
     def _vectorized_loan_calculations(
         self,

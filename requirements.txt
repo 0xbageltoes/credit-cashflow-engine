@@ -19,8 +19,37 @@ prometheus-client==0.19.0
 scipy==1.11.4
 statsmodels==0.14.1
 
+# Production dependencies
+gunicorn==21.2.0  # Production WSGI server
+psutil==5.9.6  # System monitoring
+sentry-sdk[fastapi]==1.39.1  # Error tracking with FastAPI integration
+tenacity==8.2.3  # Retry logic
+pydantic[email]==2.5.2  # Email validation
+gevent==23.9.1  # Used by gunicorn for async workers
+locust==2.20.1  # Load testing tool
+boto3==1.34.1  # AWS SDK for Python
+python-json-logger==2.0.7  # JSON formatted logging
+cryptography==41.0.7  # Enhanced security
+passlib[bcrypt]==1.7.4  # Password hashing
+statsd==4.0.1  # StatsD metrics client
+PyJWT==2.8.0  # JWT token handling
+cachetools==5.3.2  # Caching utilities
+pycryptodome==3.20.0  # Cryptographic primitives
+python-dateutil==2.8.2  # Date utilities
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+structlog==23.2.0  # Structured logging
+pygments==2.17.2  # Syntax highlighting for logs
+supervisor==4.2.5  # Process control system
+uvloop==0.19.0  # Ultra fast asyncio event loop
+httptools==0.6.1  # HTTP protocol parser
+rich==13.7.0  # Beautiful terminal outputs
+
 # Testing dependencies
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 pytest-mock==3.12.0
+mock==5.1.0
+coverage==7.3.2
+factory-boy==3.3.0
+freezegun==1.4.0  # Time freezing for tests

@@ -163,18 +163,58 @@ class SQLiteCache:
 class RateLimiter:
     def __init__(self):
         self.cache = RedisCache()
+        self.max_requests = settings.RATE_LIMIT_REQUESTS
+        self.window_seconds = settings.RATE_LIMIT_WINDOW
 
-    def is_rate_limited(self, user_id: str, max_requests: int = 100, window_seconds: int = 3600) -> bool:
-        """Check if user has exceeded rate limit"""
+    def is_rate_limited(self, user_id: str, max_requests: int = None, window_seconds: int = None) -> bool:
+        """Check if user has exceeded rate limit (legacy method)"""
+        max_requests = max_requests or self.max_requests
+        window_seconds = window_seconds or self.window_seconds
+        
+        remaining, _ = self.check_rate_limit(user_id, max_requests, window_seconds)
+        return remaining <= 0
+    
+    def check_rate_limit(self, user_id: str, max_requests: int = None, window_seconds: int = None) -> tuple[int, int]:
+        """
+        Check rate limit for a user
+        
+        Returns:
+            tuple[int, int]: (remaining requests, reset time in unix seconds)
+        """
+        max_requests = max_requests or self.max_requests
+        window_seconds = window_seconds or self.window_seconds
+        
+        # Create a unique key for this user and rate limit window
         key = f"rate_limit:{user_id}"
+        now = int(time.time())
+        window_key = f"{key}:{now // window_seconds}"
+        
         try:
-            current = self.cache.client.incr(key)
-            if current == 1:
-                self.cache.client.expire(key, window_seconds)
-            return current > max_requests
+            # Get current pipeline for atomic operations
+            pipeline = self.cache.client.pipeline()
+            
+            # Increment counter for current window
+            pipeline.incr(window_key)
+            
+            # Set expiration if not already set
+            pipeline.expire(window_key, window_seconds)
+            
+            # Get the current count
+            result = pipeline.execute()
+            current_count = result[0]
+            
+            # Calculate remaining requests and reset time
+            remaining = max(0, max_requests - current_count)
+            reset_time = ((now // window_seconds) + 1) * window_seconds
+            
+            return remaining, reset_time
+            
         except Exception as e:
-            print(f"Error checking rate limit: {str(e)}")
-            return False
+            import logging
+            logging.error(f"Error checking rate limit: {str(e)}")
+            
+            # On error, allow the request to pass but with a warning
+            return 1, now + window_seconds
 
 def cache_response(ttl: int = 3600):
     """Decorator to cache function responses"""
