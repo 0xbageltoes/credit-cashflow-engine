@@ -250,6 +250,41 @@ class BatchForecastRequest(BaseModel):
         }
     }
 
+class BatchLoanRequest(BaseModel):
+    """Model representing a batch of loans for cashflow calculations"""
+    loans: List[LoanData] = Field(
+        ..., 
+        min_length=1, 
+        max_length=100,
+        description="List of loans to process in batch"
+    )
+    parallel: bool = Field(
+        default=True,
+        description="Whether to process loans in parallel"
+    )
+    
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "loans": [
+                    {
+                        "principal": 100000.0,
+                        "interest_rate": 0.05,
+                        "term_months": 360,
+                        "start_date": "2025-01-01"
+                    },
+                    {
+                        "principal": 200000.0,
+                        "interest_rate": 0.04,
+                        "term_months": 240,
+                        "start_date": "2025-01-01"
+                    }
+                ],
+                "parallel": True
+            }
+        }
+    }
+
 class CashflowProjection(BaseModel):
     """Model representing a single cashflow projection period"""
     period: int = Field(ge=0, description="Payment period number")

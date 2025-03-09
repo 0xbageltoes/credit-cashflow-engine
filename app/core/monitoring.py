@@ -166,6 +166,13 @@ class PrometheusMetrics:
         """Track cache miss"""
         CACHE_MISSES.labels(key_type=key_type).inc()
         
+    def track_cache(self, hit: bool, key_type: str = "default"):
+        """Track cache hit or miss"""
+        if hit:
+            self.track_cache_hit(key_type)
+        else:
+            self.track_cache_miss(key_type)
+        
     def track_request_latency(self, path):
         """Decorator for tracking request latency"""
         def decorator(func):
