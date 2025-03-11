@@ -116,6 +116,29 @@ services:
     depends_on:
       - prometheus
 
+  hastructure:
+    image: yellowbean/hastructure:latest
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - MODE=Production
+      - MAX_POOL_SIZE=10
+      - TIMEOUT_SECS=300
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./hastructure_data:/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+
 volumes:
   redis-data:
   prometheus-data:

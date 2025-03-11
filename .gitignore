@@ -44,3 +44,6 @@ ENV/
 # Distribution
 dist/
 build/
+
+# windsurf rules
+.windsurfrules

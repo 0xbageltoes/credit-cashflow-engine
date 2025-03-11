@@ -1,0 +1,204 @@
+{
+  "deal_name": "Residential Mortgage Securitization",
+  "pool": {
+    "pool_name": "Residential Mortgage Pool",
+    "loans": [
+      {
+        "balance": 250000.0,
+        "rate": 0.045,
+        "term": 360,
+        "start_date": "2025-02-15",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 350000.0,
+        "rate": 0.0425,
+        "term": 360,
+        "start_date": "2025-02-01",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 200000.0,
+        "rate": 0.046,
+        "term": 360,
+        "start_date": "2025-01-20",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "Condo"
+      },
+      {
+        "balance": 175000.0,
+        "rate": 0.043,
+        "term": 360,
+        "start_date": "2025-02-10",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 275000.0,
+        "rate": 0.044,
+        "term": 360,
+        "start_date": "2025-01-25",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 325000.0,
+        "rate": 0.0435,
+        "term": 360,
+        "start_date": "2025-02-05",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 225000.0,
+        "rate": 0.047,
+        "term": 360,
+        "start_date": "2025-01-15",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "Townhouse"
+      },
+      {
+        "balance": 400000.0,
+        "rate": 0.044,
+        "term": 360,
+        "start_date": "2025-02-01",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 290000.0,
+        "rate": 0.0455,
+        "term": 360,
+        "start_date": "2025-01-10",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      },
+      {
+        "balance": 310000.0,
+        "rate": 0.0425,
+        "term": 360,
+        "start_date": "2025-02-20",
+        "rate_type": "fixed",
+        "payment_frequency": "Monthly",
+        "property_type": "SingleFamily"
+      }
+    ]
+  },
+  "waterfall": {
+    "start_date": "2025-03-01",
+    "accounts": [
+      {
+        "name": "CollectionAccount",
+        "initial_balance": 0.0
+      },
+      {
+        "name": "ReserveFund",
+        "initial_balance": 50000.0
+      }
+    ],
+    "bonds": [
+      {
+        "name": "SeniorA",
+        "balance": 1600000.0,
+        "rate": 0.035
+      },
+      {
+        "name": "MezzanineB",
+        "balance": 800000.0,
+        "rate": 0.045
+      },
+      {
+        "name": "Subordinate",
+        "balance": 200000.0,
+        "rate": 0.07
+      }
+    ],
+    "actions": [
+      {
+        "source": "CollectedInterest",
+        "target": "SeniorA",
+        "amount": "Interest"
+      },
+      {
+        "source": "CollectedInterest",
+        "target": "MezzanineB",
+        "amount": "Interest"
+      },
+      {
+        "source": "CollectedInterest",
+        "target": "Subordinate",
+        "amount": "Interest"
+      },
+      {
+        "source": "CollectedPrincipal",
+        "target": "SeniorA",
+        "amount": "OutstandingPrincipal"
+      },
+      {
+        "source": "CollectedPrincipal",
+        "target": "MezzanineB",
+        "amount": "OutstandingPrincipal"
+      },
+      {
+        "source": "CollectedPrincipal",
+        "target": "Subordinate",
+        "amount": "OutstandingPrincipal"
+      },
+      {
+        "source": "ReserveFund",
+        "target": "SeniorA",
+        "amount": "InterestShortfall"
+      },
+      {
+        "source": "ReserveFund",
+        "target": "MezzanineB",
+        "amount": "InterestShortfall",
+        "condition": "AfterTrigger"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "SequentialPaymentTrigger",
+        "condition": "CumulativeDefaultRate > 0.03",
+        "description": "Switch to sequential payment if cumulative defaults exceed 3%"
+      }
+    ]
+  },
+  "scenario": {
+    "name": "Base Case",
+    "default_curve": {
+      "vector": [0.005, 0.008, 0.012, 0.015, 0.018, 0.02, 0.018, 0.015, 0.01, 0.008]
+    },
+    "prepayment_curve": {
+      "vector": [0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.12, 0.12, 0.11, 0.10]
+    },
+    "custom_assumptions": [
+      {
+        "name": "RecoveryLag",
+        "value": 6,
+        "type": "integer"
+      },
+      {
+        "name": "RecoveryRate",
+        "value": 0.7,
+        "type": "float"
+      },
+      {
+        "name": "DelinquencyRate",
+        "value": 0.015,
+        "type": "float"
+      }
+    ]
+  }
+}

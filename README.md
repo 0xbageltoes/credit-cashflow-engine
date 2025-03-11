@@ -5,6 +5,9 @@ A high-performance Python-based microservice for cash flow forecasting, built wi
 ## Features
 
 - Cash flow forecasting with multiple scenarios
+- Advanced financial analytics using absbox (NPV, IRR, Duration, Convexity)
+- Scenario management and templating capabilities
+- Risk metrics and sensitivity analysis
 - Supabase JWT authentication
 - Rate limiting and request tracking
 - High-performance calculations using NumPy/Pandas
@@ -70,16 +73,46 @@ aws ecs update-service --cluster your-cluster-name --service credit-cashflow-eng
 ### Main Endpoints
 
 - POST `/api/v1/cashflow/forecast` - Run a cash flow forecast
-- POST `/api/v1/cashflow/scenario/save` - Save a forecasting scenario
-- GET `/api/v1/cashflow/scenario/{id}` - Load a specific scenario
-- GET `/api/v1/cashflow/scenarios` - List all saved scenarios
-- GET `/api/v1/cashflow/history` - View forecast history
+- GET `/api/v1/forecasts/` - List all forecast runs
+- GET `/api/v1/forecasts/{forecast_id}` - Get a specific forecast run
+- GET `/api/v1/forecasts/{forecast_id}/projections` - Get projections for a forecast
+
+### Scenario Management
+
+- POST `/api/v1/scenarios/` - Create a new scenario
+- GET `/api/v1/scenarios/` - List all saved scenarios
+- GET `/api/v1/scenarios/{scenario_id}` - Get a specific scenario
+- PUT `/api/v1/scenarios/{scenario_id}` - Update a scenario
+- DELETE `/api/v1/scenarios/{scenario_id}` - Delete a scenario
+- POST `/api/v1/scenarios/{scenario_id}/run` - Run a saved scenario
 
 ### System Endpoints
 
 - GET `/health` - Service health check
 - GET `/metrics` - Prometheus metrics
 - WS `/ws/updates` - WebSocket for real-time updates
+
+## Advanced Financial Analytics
+
+The engine provides advanced financial analytics using the powerful absbox library:
+
+### Core Analytics Metrics
+- **Net Present Value (NPV)**: Present value of all cash flows discounted at a specified rate
+- **Internal Rate of Return (IRR)**: Discount rate that makes NPV equal to zero
+- **Duration**: Weighted average time until cash flows are received
+- **Convexity**: Measure of the curvature in the relationship between bond prices and bond yields
+- **Weighted Average Life (WAL)**: Average time until principal is paid back
+- **Yield Metrics**: Multiple yield measurements depending on security type
+
+### Risk Analysis
+- **Spread Calculations**: Various spread measurements (Z-spread, OAS, etc.)
+- **Sensitivity Analysis**: Impact of rate/yield changes on portfolio value
+- **Stress Testing**: Performance under various economic scenarios
+
+### Monte Carlo Simulation
+- Distribution analysis of potential outcomes
+- Percentile measurements (5th, 50th, 95th)
+- Volatility metrics and statistical analysis
 
 ## Architecture
 
@@ -96,6 +129,8 @@ app/
 ├── database/      # Database operations
 ├── models/        # Pydantic models and database schemas
 ├── services/      # Business logic services
+│   ├── absbox_service.py  # Financial analytics using absbox
+│   └── redis_service.py   # Caching layer 
 ├── tasks/         # Celery tasks
 └── utils/         # Utility functions
 ```

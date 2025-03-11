@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_HEADERS: List[str] = ["*"]
     
     # Monitoring and Logging
-    SENTRY_DSN: Optional[str] = None
+    SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")
     PROMETHEUS_ENABLED: bool = True
     LOGGING_JSON_FORMAT: bool = True
     
@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     CELERY_WORKER_CONCURRENCY: int = int(os.getenv("CELERY_CONCURRENCY", "4"))
     CELERY_TASK_TIME_LIMIT: int = 1800  # 30 minutes
     CELERY_TASK_MAX_RETRIES: int = 3
+    
+    # Hastructure Engine Settings
+    HASTRUCTURE_URL: Optional[str] = os.getenv("HASTRUCTURE_URL", "http://hastructure:8081")
+    HASTRUCTURE_TIMEOUT: int = int(os.getenv("HASTRUCTURE_TIMEOUT", "300"))
+    HASTRUCTURE_MAX_POOL_SIZE: int = int(os.getenv("HASTRUCTURE_MAX_POOL_SIZE", "10"))
     
     # Market Data API settings
     FRED_API_KEY: Optional[str] = None

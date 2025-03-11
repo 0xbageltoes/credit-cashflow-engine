@@ -5,20 +5,12 @@ from fastapi.responses import JSONResponse, Response
 from datetime import datetime
 import json
 import logging
-from app.core.auth import get_current_user
-from app.services.cashflow import CashflowService
-from app.models.cashflow import (
-    CashflowForecastRequest,
-    CashflowForecastResponse,
-    ScenarioSaveRequest,
-    ScenarioResponse
-)
+from app.api.routes import router as api_router
 from app.core.middleware import RateLimitMiddleware, RequestTrackingMiddleware
 from app.core.monitoring import PrometheusMiddleware
 from app.core.security import SecurityHeadersMiddleware
 from app.core.error_tracking import init_sentry, setup_logging, log_exception
 from app.core.websocket import manager
-from app.api.v1.api import api_router
 from app.core.config import settings
 from app.tasks.forecasting import generate_forecast, run_stress_test
 from app.services.market_data import MarketDataService
@@ -30,8 +22,8 @@ logger = setup_logging()
 
 app = FastAPI(
     title="Credit Cashflow Engine",
-    description="API for credit cashflow forecasting and scenario analysis",
-    version="1.0.0",
+    description="API for credit cashflow forecasting and scenario analysis with absbox integration",
+    version="2.0.0",
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None
 )
@@ -57,11 +49,8 @@ app.add_middleware(PrometheusMiddleware)
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Include API router
-app.include_router(api_router, prefix=settings.API_V1_STR)
-
-# Initialize services
-cashflow_service = CashflowService()
+# Include API router - Using the updated router with enhanced analytics endpoints
+app.include_router(api_router, prefix="/api")
 
 @app.exception_handler(Exception)
 async def exception_handler(request, exc):
@@ -96,72 +85,6 @@ async def http_exception_handler(request, exc):
         content=jsonable_encoder({"error": exc.detail}),
         status_code=exc.status_code
     )
-
-@app.post("/cashflow/forecast", response_model=CashflowForecastResponse)
-async def generate_forecast(
-    request: CashflowForecastRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Generate cash flow projections for a set of loans
-    """
-    try:
-        result = await cashflow_service.generate_forecast(request, current_user["id"])
-        return JSONResponse(content=jsonable_encoder(result))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-@app.post("/cashflow/scenario/save")
-async def save_scenario(
-    scenario: ScenarioSaveRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Save a scenario for future reference
-    """
-    try:
-        result = await cashflow_service.save_scenario(scenario, current_user["id"])
-        return JSONResponse(content=jsonable_encoder(result))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-@app.get("/cashflow/scenario/load", response_model=list[ScenarioResponse])
-async def load_scenarios(
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Load saved scenarios
-    """
-    try:
-        result = await cashflow_service.load_scenarios(current_user["id"])
-        return JSONResponse(content=jsonable_encoder(result))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-@app.get("/cashflow/history")
-async def get_forecast_history(
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get forecast history
-    """
-    try:
-        result = await cashflow_service.get_forecast_history(current_user["id"])
-        return JSONResponse(content=jsonable_encoder(result))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
