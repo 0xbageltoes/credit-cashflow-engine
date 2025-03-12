@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_current_user
-from app.models.cashflow import LoanData, BatchLoanRequest, CashflowForecastResponse
+from app.models.cashflow import LoanData, BatchForecastRequest, CashflowForecastResponse
 from app.services.cashflow import CashflowService
 from app.core.monitoring import request_counter, CALCULATION_TIME
 from app.models.analytics import EnhancedAnalyticsRequest
@@ -47,7 +47,7 @@ async def calculate_cashflow(
             response_model=List[CashflowForecastResponse], 
             summary="Calculate cashflows for multiple loans")
 async def calculate_batch(
-    batch_request: BatchLoanRequest,
+    batch_request: BatchForecastRequest,
     current_user: Dict = Depends(get_current_user)
 ):
     """
