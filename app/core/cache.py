@@ -47,6 +47,19 @@ class RedisCache:
             print(f"Error deleting from cache: {str(e)}")
             return False
 
+def get_redis_client() -> Redis:
+    """
+    Get a Redis client instance.
+    
+    Returns:
+        Redis: A configured Redis client
+    """
+    try:
+        return Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    except Exception as e:
+        print(f"Error creating Redis client: {str(e)}")
+        return None
+
 class SQLiteCache:
     """SQLite-based cache implementation for local development and testing"""
     

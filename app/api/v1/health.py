@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_current_user
-from app.core.monitoring import CALCULATION_TIME, request_counter
+from app.core.monitoring import CALCULATION_TIME, REQUEST_COUNT
 from app.core.config import settings
 from app.services.absbox_service_enhanced import AbsBoxServiceEnhanced
 from app.core.cache import get_redis_client
@@ -69,7 +69,7 @@ async def absbox_health_check(current_user: Dict = Depends(get_current_user)):
         
         # Record the calculation time in Prometheus
         CALCULATION_TIME.labels(calculation="health_check").observe(execution_time)
-        request_counter.labels(endpoint="/api/v1/health/absbox").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/health/absbox").inc()
         
         return health_status
     except Exception as e:

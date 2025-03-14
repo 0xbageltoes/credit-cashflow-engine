@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.deps import get_current_user
 from app.models.cashflow import LoanData, BatchForecastRequest, CashflowForecastResponse
 from app.services.cashflow import CashflowService
-from app.core.monitoring import request_counter, CALCULATION_TIME
+from app.core.monitoring import REQUEST_COUNT, CALCULATION_TIME
 from app.models.analytics import EnhancedAnalyticsRequest
 
 # Import the enhanced absbox service for advanced analytics
@@ -32,7 +32,7 @@ async def calculate_cashflow(
     - Cumulative metrics
     """
     try:
-        request_counter.labels(endpoint="/api/v1/cashflow/calculate").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/cashflow/calculate").inc()
         
         cashflow_service = CashflowService()
         result = cashflow_service.calculate_loan_cashflow(loan_data)
@@ -56,7 +56,7 @@ async def calculate_batch(
     This endpoint is optimized for batch processing of multiple loan scenarios.
     """
     try:
-        request_counter.labels(endpoint="/api/v1/cashflow/calculate-batch").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/cashflow/calculate-batch").inc()
         
         cashflow_service = CashflowService()
         results = cashflow_service.calculate_batch(batch_request)
@@ -86,7 +86,7 @@ async def calculate_enhanced_metrics(
     - And more
     """
     try:
-        request_counter.labels(endpoint="/api/v1/cashflow/enhanced-metrics").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/cashflow/enhanced-metrics").inc()
         
         service = AbsBoxServiceEnhanced()
         result = service.calculate_enhanced_metrics(request)
@@ -119,7 +119,7 @@ async def sensitivity_analysis(
     - Default rates
     """
     try:
-        request_counter.labels(endpoint="/api/v1/cashflow/sensitivity").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/cashflow/sensitivity").inc()
         
         service = AbsBoxServiceEnhanced()
         result = service.perform_sensitivity_analysis(request)
@@ -153,7 +153,7 @@ async def calculate_risk_metrics(
     - Stress test results
     """
     try:
-        request_counter.labels(endpoint="/api/v1/cashflow/risk-metrics").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/cashflow/risk-metrics").inc()
         
         service = AbsBoxServiceEnhanced()
         result = service.calculate_risk_metrics(request)

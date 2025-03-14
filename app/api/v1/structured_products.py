@@ -13,7 +13,7 @@ from app.models.structured_products import (
     ScenarioConfig,
     AnalysisResult
 )
-from app.core.monitoring import request_counter, CALCULATION_TIME
+from app.core.monitoring import REQUEST_COUNT, CALCULATION_TIME
 from app.api.deps import get_current_user
 from app.core.cache import RedisCache
 
@@ -44,7 +44,7 @@ async def analyze_deal(
     It returns detailed cashflow projections, metrics and statistics.
     """
     try:
-        request_counter.labels(endpoint="/api/v1/structured-products/deals/analyze").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/structured-products/deals/analyze").inc()
         
         logger.info(f"Processing structured deal analysis for {deal_request.deal_name}")
         service = AbsBoxService()
@@ -80,7 +80,7 @@ async def run_scenarios(
     Returns summary metrics for each scenario for comparison.
     """
     try:
-        request_counter.labels(endpoint="/api/v1/structured-products/deals/scenarios").inc()
+        REQUEST_COUNT.labels(endpoint="/api/v1/structured-products/deals/scenarios").inc()
         
         service = AbsBoxService()
         logger.info(f"Running {len(scenarios)} scenarios on deal {deal_request.deal_name}")

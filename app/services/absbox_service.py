@@ -11,15 +11,37 @@ from functools import lru_cache
 
 # Import AbsBox libraries
 import absbox as ab
-from absbox.local.pool import Pool
-from absbox.local.loan import Loan, FixedRateLoan, FloatingRateLoan
-from absbox.local.deal import Deal
-from absbox.local.engine import LiqEngine
-from absbox.local.waterfall import Waterfall
-from absbox.local.assumption import Assumption, DefaultAssumption
-from absbox.local.rateAssumption import FlatCurve
-from absbox.local.analytics import Analytics
-from absbox.local.cashflow import Cashflow
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Use the proper import structure based on the installed absbox package
+try:
+    # Try importing directly from absbox.local if available
+    from absbox.local.pool import Pool
+    from absbox.local.loan import Loan, FixedRateLoan, FloatingRateLoan
+    from absbox.local.deal import Deal
+    from absbox.local.engine import LiqEngine
+    from absbox.local.waterfall import Waterfall
+    from absbox.local.assumption import Assumption, DefaultAssumption
+    from absbox.local.rateAssumption import FlatCurve
+    from absbox.local.analytics import Analytics
+    from absbox.local.cashflow import Cashflow
+except ImportError:
+    # Otherwise use the main absbox module
+    # The absbox module has the required classes and functionality, but with a different structure
+    logger.warning("Using alternative absbox import structure")
+    # These will need to be imported from the appropriate modules or constructed as needed
+    Pool = ab.local.Pool if hasattr(ab, 'local') and hasattr(ab.local, 'Pool') else None 
+    Loan = ab.local.Loan if hasattr(ab, 'local') and hasattr(ab.local, 'Loan') else None
+    Deal = ab.local.Deal if hasattr(ab, 'local') and hasattr(ab.local, 'Deal') else None
+    LiqEngine = ab.local.LiqEngine if hasattr(ab, 'local') and hasattr(ab.local, 'LiqEngine') else None
+    Waterfall = ab.local.Waterfall if hasattr(ab, 'local') and hasattr(ab.local, 'Waterfall') else None
+    Assumption = ab.local.Assumption if hasattr(ab, 'local') and hasattr(ab.local, 'Assumption') else None
+    DefaultAssumption = ab.local.DefaultAssumption if hasattr(ab, 'local') and hasattr(ab.local, 'DefaultAssumption') else None
+    Analytics = ab.local.Analytics if hasattr(ab, 'local') and hasattr(ab.local, 'Analytics') else None
+    FlatCurve = ab.local.FlatCurve if hasattr(ab, 'local') and hasattr(ab.local, 'FlatCurve') else None
+    Cashflow = ab.local.Cashflow if hasattr(ab, 'local') and hasattr(ab.local, 'Cashflow') else None
 
 from app.core.config import settings
 from app.core.cache import RedisCache
@@ -34,8 +56,6 @@ from app.models.structured_products import (
 )
 from app.models.analytics import EnhancedAnalyticsResult, RiskMetrics, SensitivityAnalysis
 from app.models.cashflow import CashflowProjection, LoanData, CashflowForecastResponse
-
-logger = logging.getLogger(__name__)
 
 class AbsBoxService:
     """Service for structured finance analytics using AbsBox"""
@@ -355,7 +375,9 @@ class AbsBoxService:
                 
                 try:
                     # Attempt to calculate spread metrics
-                    benchmark_curve = FlatCurve(rate=discount_rate)
+                    benchmark_curve = FlatCurve(
+                        rate=discount_rate
+                    )
                     dm = self.analytics.discountMargin(cf, principal, benchmark_curve)
                     z_spread = self.analytics.zSpread(cf, principal, benchmark_curve)
                     # E-spread/OAS would require option modeling, not included for simplicity

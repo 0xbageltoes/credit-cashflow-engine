@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="c:\Users\aleanos\1-repo\ws-next\credit-cashflow-engine-2\credit-cashflow-engine\.venv"
+VIRTUAL_ENV="C:\Users\aleanos\1-repo\ws-next\credit-cashflow-engine-2\credit-cashflow-engine\.venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
