@@ -99,6 +99,60 @@ STRESS_WEBSOCKET_CONNECTIONS = Gauge(
     ['user_id']
 )
 
+# Monte Carlo specific metrics
+MONTE_CARLO_ITERATIONS = Histogram(
+    'cashflow_monte_carlo_iterations',
+    'Number of iterations in Monte Carlo simulations',
+    ['user_id', 'asset_class']
+)
+MONTE_CARLO_CALCULATION_TIME = Histogram(
+    'cashflow_monte_carlo_calculation_time_seconds',
+    'Time spent calculating Monte Carlo simulations',
+    ['user_id', 'complexity']
+)
+MONTE_CARLO_CACHE_HITS = Counter(
+    'cashflow_monte_carlo_cache_hits',
+    'Number of Monte Carlo simulation cache hits',
+    ['user_id']
+)
+MONTE_CARLO_CACHE_MISSES = Counter(
+    'cashflow_monte_carlo_cache_misses',
+    'Number of Monte Carlo simulation cache misses',
+    ['user_id']
+)
+MONTE_CARLO_ERRORS = Counter(
+    'cashflow_monte_carlo_errors',
+    'Number of errors in Monte Carlo simulations',
+    ['error_type']
+)
+MONTE_CARLO_CONCURRENT_SIMULATIONS = Gauge(
+    'cashflow_monte_carlo_concurrent_simulations',
+    'Number of concurrent Monte Carlo simulations running',
+    ['user_id']
+)
+
+# Redis specific metrics
+REDIS_OPERATIONS = Counter(
+    'cashflow_redis_operations',
+    'Number of Redis operations',
+    ['operation', 'success']
+)
+REDIS_OPERATION_LATENCY = Histogram(
+    'cashflow_redis_operation_latency_seconds',
+    'Redis operation latency in seconds',
+    ['operation']
+)
+REDIS_CACHE_SIZE = Gauge(
+    'cashflow_redis_cache_size',
+    'Size of Redis cache in bytes',
+    ['prefix']
+)
+REDIS_ERRORS = Counter(
+    'cashflow_redis_errors',
+    'Number of Redis errors',
+    ['error_type']
+)
+
 class PrometheusMiddleware:
     def __init__(self, app):
         self.app = app
@@ -320,6 +374,104 @@ class PrometheusMetrics:
         # For testing, we just log the info
         for key, value in info_dict.items():
             logging.info(f"System info: {key}={value}")
+
+class RedisMonitoring:
+    """Redis monitoring class for tracking Redis operations"""
+    
+    def __init__(self):
+        """Initialize Redis monitoring"""
+        self.operations_counter = REDIS_OPERATIONS
+        self.operation_latency = REDIS_OPERATION_LATENCY
+        self.errors_counter = REDIS_ERRORS
+        self.cache_size_gauge = REDIS_CACHE_SIZE
+    
+    def observe_redis_operation(self, operation: str, duration: float, success: bool = True):
+        """
+        Track a Redis operation
+        
+        Args:
+            operation: Name of the operation (get, set, delete, etc.)
+            duration: Duration of the operation in seconds
+            success: Whether the operation was successful
+        """
+        self.operations_counter.labels(operation=operation, success=str(success)).inc()
+        self.operation_latency.labels(operation=operation).observe(duration)
+    
+    def track_redis_error(self, error_type: str):
+        """
+        Track a Redis error
+        
+        Args:
+            error_type: Type of error
+        """
+        self.errors_counter.labels(error_type=error_type).inc()
+    
+    def update_cache_size(self, prefix: str, size_bytes: int):
+        """
+        Update Redis cache size for a prefix
+        
+        Args:
+            prefix: Key prefix
+            size_bytes: Size in bytes
+        """
+        self.cache_size_gauge.labels(prefix=prefix).set(size_bytes)
+
+class MonteCarloMetrics:
+    """Monte Carlo simulation metrics tracker"""
+    
+    def __init__(self, user_id: str):
+        """
+        Initialize Monte Carlo metrics tracker
+        
+        Args:
+            user_id: ID of the user running simulations
+        """
+        self.user_id = user_id
+        self.iterations_histogram = MONTE_CARLO_ITERATIONS
+        self.calculation_time = MONTE_CARLO_CALCULATION_TIME
+        self.cache_hits = MONTE_CARLO_CACHE_HITS
+        self.cache_misses = MONTE_CARLO_CACHE_MISSES
+        self.errors = MONTE_CARLO_ERRORS
+        self.concurrent_simulations = MONTE_CARLO_CONCURRENT_SIMULATIONS
+    
+    def track_simulation_start(self, asset_class: str, iterations: int):
+        """
+        Track the start of a simulation
+        
+        Args:
+            asset_class: Asset class of the simulation
+            iterations: Number of iterations
+        """
+        self.iterations_histogram.labels(user_id=self.user_id, asset_class=asset_class).observe(iterations)
+        self.concurrent_simulations.labels(user_id=self.user_id).inc()
+    
+    def track_simulation_end(self, complexity: str, duration: float, cache_hit: bool = False):
+        """
+        Track the end of a simulation
+        
+        Args:
+            complexity: Complexity of the simulation (simple, medium, complex)
+            duration: Duration of the simulation in seconds
+            cache_hit: Whether the result was retrieved from cache
+        """
+        self.calculation_time.labels(user_id=self.user_id, complexity=complexity).observe(duration)
+        self.concurrent_simulations.labels(user_id=self.user_id).dec()
+        
+        # Track cache hit/miss
+        if cache_hit:
+            self.cache_hits.labels(user_id=self.user_id).inc()
+        else:
+            self.cache_misses.labels(user_id=self.user_id).inc()
+    
+    def track_simulation_error(self, error_type: str):
+        """
+        Track a simulation error
+        
+        Args:
+            error_type: Type of error
+        """
+        self.errors.labels(error_type=error_type).inc()
+        self.concurrent_simulations.labels(user_id=self.user_id).dec()
 
 """
 Monitoring and Performance Metrics Module

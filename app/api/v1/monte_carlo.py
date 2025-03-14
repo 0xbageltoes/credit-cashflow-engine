@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Path, status, Body
 from fastapi.responses import JSONResponse
 
 from app.core.auth import get_current_user
@@ -362,7 +362,7 @@ async def delete_simulation(
             id=simulation_id
         )
         
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
     
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -514,6 +514,356 @@ async def run_simulation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error running Monte Carlo simulation: {str(e)}"
+        )
+
+@router.post(
+    "/simulations/with-scenario",
+    summary="Run a Monte Carlo simulation with a specific scenario applied",
+    description="Run a Monte Carlo simulation with a specific scenario applied",
+    response_model=Dict[str, Any]
+)
+async def run_simulation_with_scenario(
+    request: MonteCarloSimulationRequest,
+    scenario_id: str = Query(..., description="ID of the scenario to apply"),
+    background_tasks: BackgroundTasks = None,
+    run_async: bool = Query(True, description="Run the simulation asynchronously"),
+    use_cache: bool = Query(True, description="Use cached results if available"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Run a Monte Carlo simulation with a specific scenario applied
+    
+    Args:
+        request: The simulation request
+        scenario_id: ID of the scenario to apply
+        background_tasks: FastAPI background tasks
+        run_async: Whether to run the simulation asynchronously
+        use_cache: Whether to use cached results
+        current_user: The authenticated user
+        
+    Returns:
+        The simulation with scenario applied
+    """
+    try:
+        user_id = current_user["id"]
+        
+        # Generate a simulation ID
+        simulation_id = str(uuid.uuid4())
+        
+        # Log the request
+        logger.info(f"Running Monte Carlo simulation {simulation_id} with scenario {scenario_id} for user {user_id}")
+        
+        # Initialize services
+        monte_carlo_service = MonteCarloSimulationService()
+        supabase_service = SupabaseService()
+        
+        # Check if the scenario exists
+        scenario = await supabase_service.get_scenario(scenario_id, user_id)
+        if not scenario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Scenario {scenario_id} not found"
+            )
+        
+        # Create initial response
+        response = {
+            "id": simulation_id,
+            "status": SimulationStatus.PENDING,
+            "message": "Simulation has been created",
+            "created_at": datetime.now().isoformat(),
+            "scenario_id": scenario_id,
+            "scenario_name": scenario.get("name", "Unknown")
+        }
+        
+        if run_async:
+            # Create initial simulation record
+            simulation_record = {
+                "id": simulation_id,
+                "user_id": user_id,
+                "request": request.dict(),
+                "scenario_id": scenario_id,
+                "result": {
+                    "id": simulation_id,
+                    "name": request.name,
+                    "description": request.description,
+                    "status": SimulationStatus.PENDING,
+                    "start_time": datetime.now().isoformat(),
+                    "num_simulations": request.num_simulations,
+                    "num_completed": 0,
+                    "scenario_id": scenario_id
+                },
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            # Insert the initial record
+            await supabase_service.insert_db(
+                table="monte_carlo_simulations",
+                data=simulation_record
+            )
+            
+            # Run the simulation in the background
+            if background_tasks:
+                # Run as FastAPI background task
+                background_tasks.add_task(
+                    _run_simulation_with_scenario_task,
+                    request,
+                    user_id,
+                    simulation_id,
+                    scenario_id,
+                    use_cache
+                )
+                response["status"] = SimulationStatus.PENDING
+                response["message"] = "Simulation has been queued for processing"
+            else:
+                # Run as Celery task
+                from app.worker.monte_carlo_tasks import run_monte_carlo_simulation
+                
+                task = run_monte_carlo_simulation.delay(
+                    request.dict(),
+                    user_id,
+                    simulation_id,
+                    scenario_id,
+                    use_cache
+                )
+                
+                response["status"] = SimulationStatus.PENDING
+                response["message"] = "Simulation has been queued for processing"
+                response["task_id"] = task.id
+        else:
+            # Run synchronously
+            try:
+                with CalculationTracker(f"monte_carlo_with_scenario_{simulation_id}"):
+                    result = await monte_carlo_service.run_simulation_with_scenario(
+                        request,
+                        scenario_id,
+                        user_id,
+                        use_cache=use_cache
+                    )
+                
+                # Save the simulation
+                saved_simulation = {
+                    "id": simulation_id,
+                    "user_id": user_id,
+                    "name": request.name,
+                    "description": request.description,
+                    "request": request.dict(),
+                    "result": result.dict(),
+                    "scenario_id": scenario_id,
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                
+                await supabase_service.create_simulation(saved_simulation)
+                
+                response["status"] = SimulationStatus.COMPLETED
+                response["message"] = "Simulation has been completed"
+                response["result"] = result.dict()
+            except Exception as e:
+                logger.error(f"Error running Monte Carlo simulation with scenario: {str(e)}")
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error running simulation: {str(e)}"
+                )
+        
+        return response
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating Monte Carlo simulation with scenario: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating simulation: {str(e)}"
+        )
+
+async def _run_simulation_with_scenario_task(
+    request: MonteCarloSimulationRequest,
+    user_id: str,
+    simulation_id: str,
+    scenario_id: str,
+    use_cache: bool = True
+):
+    """
+    Background task for running a Monte Carlo simulation with scenario
+    
+    Args:
+        request: The simulation request
+        user_id: The user ID
+        simulation_id: The simulation ID
+        scenario_id: The scenario ID
+        use_cache: Whether to use caching
+    """
+    try:
+        # Initialize services
+        monte_carlo_service = MonteCarloSimulationService()
+        supabase_service = SupabaseService()
+        
+        # Update simulation status
+        simulation = await supabase_service.get_item(
+            table="monte_carlo_simulations",
+            id=simulation_id
+        )
+        
+        if simulation:
+            # Update the status
+            result = simulation.get("result", {})
+            result["status"] = SimulationStatus.RUNNING
+            result["start_time"] = datetime.now().isoformat()
+            
+            # Save the updated simulation
+            await supabase_service.update_item(
+                table="monte_carlo_simulations",
+                id=simulation_id,
+                data={
+                    "result": result,
+                    "updated_at": datetime.now().isoformat()
+                }
+            )
+        
+        # Run the simulation with the scenario
+        with CalculationTracker(f"monte_carlo_with_scenario_{simulation_id}"):
+            result = await monte_carlo_service.run_simulation_with_scenario(
+                request,
+                scenario_id,
+                user_id,
+                use_cache=use_cache
+            )
+        
+        # Save the simulation
+        saved_simulation = {
+            "id": simulation_id,
+            "user_id": user_id,
+            "name": request.name,
+            "description": request.description,
+            "request": request.dict(),
+            "result": result.dict(),
+            "scenario_id": scenario_id,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        await supabase_service.create_simulation(saved_simulation)
+        
+        # Update the simulation status
+        if simulation:
+            await supabase_service.update_item(
+                table="monte_carlo_simulations",
+                id=simulation_id,
+                data={
+                    "result": result.dict(),
+                    "updated_at": datetime.now().isoformat(),
+                    "completed_at": datetime.now().isoformat()
+                }
+            )
+        
+        logger.info(f"Completed Monte Carlo simulation {simulation_id} with scenario {scenario_id}")
+    
+    except Exception as e:
+        logger.error(f"Error running Monte Carlo simulation {simulation_id} with scenario {scenario_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Update simulation status
+        try:
+            simulation = await supabase_service.get_item(
+                table="monte_carlo_simulations",
+                id=simulation_id
+            )
+            
+            if simulation:
+                # Update the status
+                result = simulation.get("result", {})
+                result["status"] = SimulationStatus.FAILED
+                result["error"] = str(e)
+                result["end_time"] = datetime.now().isoformat()
+                
+                # Save the updated simulation
+                await supabase_service.update_item(
+                    table="monte_carlo_simulations",
+                    id=simulation_id,
+                    data={
+                        "result": result,
+                        "updated_at": datetime.now().isoformat()
+                    }
+                )
+        except Exception as update_error:
+            logger.error(f"Error updating failed simulation status: {str(update_error)}")
+
+@router.post(
+    "/scenarios/compare",
+    summary="Compare Monte Carlo simulations with different scenarios",
+    description="Compare Monte Carlo simulations with different scenarios",
+    response_model=Dict[str, Any]
+)
+async def compare_scenarios(
+    base_request: MonteCarloSimulationRequest,
+    scenario_ids: List[str] = Body(..., description="List of scenario IDs to compare"),
+    metrics_to_compare: List[str] = Body(None, description="List of metrics to compare"),
+    percentiles_to_compare: List[float] = Body(None, description="List of percentiles to compare"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Compare Monte Carlo simulations with different scenarios
+    
+    Args:
+        base_request: The base simulation request
+        scenario_ids: List of scenario IDs to compare
+        metrics_to_compare: List of metrics to include in comparison
+        percentiles_to_compare: List of percentiles to include in comparison
+        current_user: The authenticated user
+        
+    Returns:
+        Comparison results
+    """
+    try:
+        user_id = current_user["id"]
+        
+        # Initialize services
+        monte_carlo_service = MonteCarloSimulationService()
+        supabase_service = SupabaseService()
+        
+        # Verify that all scenarios exist
+        for scenario_id in scenario_ids:
+            scenario = await supabase_service.get_scenario(scenario_id, user_id)
+            if not scenario:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Scenario {scenario_id} not found"
+                )
+        
+        # Log the request
+        logger.info(f"Comparing scenarios for user {user_id}: {', '.join(scenario_ids)}")
+        
+        # Run the comparison with error handling
+        try:
+            with CalculationTracker(f"monte_carlo_scenario_comparison_{user_id}"):
+                comparison_result = await monte_carlo_service.compare_scenarios(
+                    base_request,
+                    scenario_ids,
+                    user_id,
+                    metrics_to_compare,
+                    percentiles_to_compare
+                )
+            
+            return comparison_result
+        except Exception as e:
+            logger.error(f"Error comparing scenarios: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error comparing scenarios: {str(e)}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in scenario comparison: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in scenario comparison: {str(e)}"
         )
 
 @router.post(
@@ -787,7 +1137,7 @@ async def delete_scenario(
             id=scenario_id
         )
         
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
     
     except HTTPException:
         # Re-raise HTTP exceptions

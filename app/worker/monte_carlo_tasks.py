@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timedelta
 import json
 import traceback
+import httpx
+from typing import Dict, Any, List, Optional
 
 from celery import shared_task
 from celery.signals import task_prerun, task_success, task_failure
@@ -231,107 +233,279 @@ def task_failure_handler(sender=None, task_id=None, exception=None, args=None, k
                 logger.error(f"Error updating failed simulation status: {str(e)}")
 
 @shared_task(
-    name="app.worker.monte_carlo_tasks.run_monte_carlo_simulation",
     bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_backoff_max=600,  # Maximum of 10 minutes between retries
-    retry_jitter=True,
+    name="run_monte_carlo_simulation",
     max_retries=3,
-    time_limit=3600,  # 1 hour time limit
-    soft_time_limit=3540,  # 59 minutes soft time limit
+    retry_backoff=True,
+    retry_backoff_max=600,
+    task_time_limit=3600,
+    task_soft_time_limit=3000,
+    acks_late=True,
+    time_limit=3600,
+    soft_time_limit=3000,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 3, "countdown": 60}
 )
-def run_monte_carlo_simulation(self, request_dict: dict, simulation_id: str, user_id: str, use_cache: bool = True):
+def run_monte_carlo_simulation(
+    self,
+    request: Dict,
+    user_id: str,
+    simulation_id: str,
+    scenario_id: str = None,
+    use_cache: bool = True
+):
     """
-    Run a Monte Carlo simulation in the background
+    Celery task to run a Monte Carlo simulation
     
     Args:
-        self: The task instance
-        request_dict: The simulation request as a dictionary
-        simulation_id: The ID of the simulation
-        user_id: The ID of the user running the simulation
-        use_cache: Whether to use cached results if available
+        self: Celery task instance
+        request: The simulation request as a dict
+        user_id: ID of the user running the simulation
+        simulation_id: ID for this simulation
+        scenario_id: Optional ID of the scenario to apply
+        use_cache: Whether to use caching
         
     Returns:
-        Dictionary with information about the completed simulation
+        Dict with simulation result
     """
-    task_id = self.request.id
-    logger.info(f"Starting Monte Carlo simulation {simulation_id} (task ID: {task_id})")
-    
     try:
-        # Update simulation status in database
-        supabase_service.update_item_sync(
-            table="monte_carlo_simulations",
-            id=simulation_id,
-            data={
-                "result": {
-                    "status": SimulationStatus.RUNNING,
-                    "start_time": datetime.now().isoformat(),
-                    "task_id": task_id
-                },
-                "updated_at": datetime.now().isoformat()
+        # Convert dict to MonteCarloSimulationRequest
+        from app.models.monte_carlo import MonteCarloSimulationRequest
+        
+        # Initialize services
+        from app.services.monte_carlo_service import MonteCarloSimulationService
+        from app.services.supabase_service import SupabaseService
+        
+        monte_carlo_service = MonteCarloSimulationService()
+        supabase_service = SupabaseService()
+        
+        # Get the current task
+        task_id = self.request.id
+        
+        # Set up progress callback
+        def progress_callback(completed, total):
+            # Calculate percentage
+            percentage = int(100 * completed / total)
+            
+            # Get task meta
+            task_meta = self.backend.get_task_meta(task_id)
+            current_info = task_meta.get("result", {})
+            
+            # Update with new progress
+            if isinstance(current_info, dict):
+                current_info["num_completed"] = completed
+                current_info["progress_percentage"] = percentage
+                
+                # Save updated meta
+                self.update_state(
+                    state="PROGRESS",
+                    meta=current_info
+                )
+        
+        # Set initial state
+        simulation_request = MonteCarloSimulationRequest.parse_obj(request)
+        self.update_state(
+            state="STARTED",
+            meta={
+                "id": simulation_id,
+                "name": simulation_request.name,
+                "description": simulation_request.description,
+                "status": "RUNNING",
+                "start_time": datetime.now().isoformat(),
+                "num_simulations": simulation_request.num_simulations,
+                "num_completed": 0,
+                "progress_percentage": 0,
+                "scenario_id": scenario_id
             }
         )
         
-        # Convert request_dict to MonteCarloSimulationRequest
-        request = MonteCarloSimulationRequest.parse_obj(request_dict)
+        # Update the status in Supabase
+        simulation = {
+            "id": simulation_id,
+            "user_id": user_id,
+            "request": request,
+            "result": {
+                "id": simulation_id,
+                "name": simulation_request.name,
+                "description": simulation_request.description,
+                "status": "RUNNING",
+                "start_time": datetime.now().isoformat(),
+                "num_simulations": simulation_request.num_simulations,
+                "num_completed": 0,
+                "scenario_id": scenario_id
+            },
+            "scenario_id": scenario_id,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
         
-        # Record metrics
-        with CalculationTracker(f"monte_carlo_simulation_{simulation_id}"):
-            start_time = time.time()
+        # Check if simulation already exists
+        existing_simulation = None
+        try:
+            existing_simulation = supabase_service.get_item_sync(
+                table="monte_carlo_simulations",
+                id=simulation_id
+            )
+        except Exception as e:
+            logger.warning(f"Error checking for existing simulation: {str(e)}")
+        
+        # Update or create simulation record
+        try:
+            if existing_simulation:
+                # Update existing simulation
+                supabase_service.update_item_sync(
+                    table="monte_carlo_simulations",
+                    id=simulation_id,
+                    data={
+                        "result": simulation["result"],
+                        "updated_at": datetime.now().isoformat()
+                    }
+                )
+            else:
+                # Create new simulation
+                supabase_service.insert_db_sync(
+                    table="monte_carlo_simulations",
+                    data=simulation
+                )
+        except Exception as e:
+            logger.error(f"Error updating simulation status in database: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Continue execution even if DB update fails
+        
+        # Run the simulation (with or without scenario)
+        start_time = time.time()
+        result = None
+        
+        if scenario_id:
+            # Run with scenario
+            logger.info(f"Running Monte Carlo simulation {simulation_id} with scenario {scenario_id}")
+            
+            # Run the simulation with scenario
+            result = monte_carlo_service.run_simulation_with_scenario_sync(
+                simulation_request,
+                scenario_id,
+                user_id,
+                use_cache,
+                progress_callback
+            )
+        else:
+            # Run without scenario
+            logger.info(f"Running Monte Carlo simulation {simulation_id}")
             
             # Run the simulation
             result = monte_carlo_service.run_simulation_sync(
-                request=request,
-                user_id=user_id,
-                use_cache=use_cache
+                simulation_request,
+                user_id,
+                use_cache,
+                progress_callback
             )
-            
-            execution_time = time.time() - start_time
         
-        # Update simulation in database
-        supabase_service.update_item_sync(
-            table="monte_carlo_simulations",
-            id=simulation_id,
-            data={
-                "result": result.dict(),
-                "updated_at": datetime.now().isoformat()
-            }
-        )
+        # Calculate execution time
+        execution_time = time.time() - start_time
         
-        logger.info(f"Completed Monte Carlo simulation {simulation_id} in {execution_time:.2f}s")
+        # Convert result to dict
+        result_dict = result.dict()
         
-        # Return information about the completed simulation
-        return {
-            "simulation_id": simulation_id,
-            "user_id": user_id,
-            "status": SimulationStatus.COMPLETED,
-            "execution_time": execution_time
-        }
-    
-    except Exception as e:
-        logger.error(f"Error running Monte Carlo simulation {simulation_id}: {str(e)}")
-        logger.error(traceback.format_exc())
+        # Update the result with execution time
+        result_dict["execution_time_seconds"] = execution_time
+        result_dict["completed_at"] = datetime.now().isoformat()
         
-        # Update simulation status in database
+        # Handle detailed paths separately if they exist (they can be large)
+        detailed_paths = None
+        if "detailed_paths" in result_dict and result_dict["detailed_paths"]:
+            # Store the detailed paths separately or summarize
+            detailed_paths = result_dict.pop("detailed_paths")
+            result_dict["has_detailed_paths"] = True
+        else:
+            result_dict["has_detailed_paths"] = False
+        
+        # Save the final result to Supabase
         try:
+            # Update the simulation record
             supabase_service.update_item_sync(
                 table="monte_carlo_simulations",
                 id=simulation_id,
                 data={
-                    "result": {
-                        "status": SimulationStatus.FAILED,
-                        "error": str(e),
-                        "end_time": datetime.now().isoformat()
-                    },
-                    "updated_at": datetime.now().isoformat()
+                    "result": result_dict,
+                    "updated_at": datetime.now().isoformat(),
+                    "completed_at": datetime.now().isoformat()
                 }
             )
-        except Exception as update_error:
-            logger.error(f"Error updating failed simulation status: {str(update_error)}")
+            
+            if detailed_paths:
+                # Save the detailed paths to a separate table or blob storage
+                # This is implementation-specific based on how large the data is
+                pass
+                
+            logger.info(f"Saved Monte Carlo simulation {simulation_id} result to database")
+        except Exception as e:
+            logger.error(f"Error saving simulation result to database: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Log the result size for debugging
+            result_json = json.dumps(result_dict)
+            logger.debug(f"Result size: {len(result_json)} bytes")
         
-        # Re-raise the exception for Celery's retry mechanism
-        raise
+        logger.info(f"Completed Monte Carlo simulation {simulation_id} in {execution_time:.2f} seconds")
+        
+        # Return the result
+        return {
+            "id": simulation_id,
+            "status": "COMPLETED",
+            "message": "Simulation completed successfully",
+            "execution_time_seconds": execution_time,
+            "result": result_dict
+        }
+    
+    except Exception as e:
+        # Log the error
+        error_msg = f"Error running Monte Carlo simulation {simulation_id}: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        
+        # Try to update the simulation status in the database
+        try:
+            # Initialize Supabase service
+            from app.services.supabase_service import SupabaseService
+            supabase_service = SupabaseService()
+            
+            # Try to get the existing simulation
+            existing_simulation = supabase_service.get_item_sync(
+                table="monte_carlo_simulations",
+                id=simulation_id
+            )
+            
+            if existing_simulation:
+                # Update with error status
+                result = existing_simulation.get("result", {})
+                result["status"] = "FAILED"
+                result["error"] = str(e)
+                result["error_details"] = traceback.format_exc()
+                result["end_time"] = datetime.now().isoformat()
+                
+                # Save the updated simulation
+                supabase_service.update_item_sync(
+                    table="monte_carlo_simulations",
+                    id=simulation_id,
+                    data={
+                        "result": result,
+                        "updated_at": datetime.now().isoformat()
+                    }
+                )
+                
+                logger.info(f"Updated Monte Carlo simulation {simulation_id} with failure status")
+        except Exception as db_error:
+            logger.error(f"Error updating simulation status after failure: {str(db_error)}")
+        
+        # Check if retry is beneficial
+        should_retry = not isinstance(e, (ValueError, TypeError, AttributeError))
+        
+        if should_retry and self.request.retries < self.max_retries:
+            logger.info(f"Retrying Monte Carlo simulation task (attempt {self.request.retries + 1}/{self.max_retries})")
+            raise self.retry(exc=e, countdown=60)
+        else:
+            # Raise the error for Celery to handle
+            raise
 
 @shared_task(
     name="app.worker.monte_carlo_tasks.cleanup_expired_simulations",

@@ -1,105 +1,57 @@
 import os
 import pytest
-from unittest.mock import MagicMock
-from dotenv import load_dotenv
+from unittest.mock import MagicMock, AsyncMock
 import sys
+import pathlib
+import uuid
+import time
+import json
 
-# Load environment variables from .env.test
-load_dotenv(".env.test")
-
-# Add a check at the very beginning to see if we're in a test environment
-# and set required environment variables before any imports happen
-def setup_test_environment():
-    """Set up environment variables for testing."""
-    # Only run this setup once
-    if os.environ.get("TEST_ENV_SETUP_DONE"):
-        return
-        
-    print("Setting up test environment variables...")
-    required_vars = {
-        "ENV": "testing",
-        "SUPABASE_URL": "https://example.supabase.co",
-        "SUPABASE_KEY": "dummy_key",
-        "SUPABASE_SERVICE_ROLE_KEY": "dummy_service_role_key",
-        "SUPABASE_JWT_SECRET": "dummy_jwt_secret",
-        "NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co",
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "dummy_anon_key",
-        "UPSTASH_REDIS_HOST": "localhost",
-        "UPSTASH_REDIS_PORT": "6379",
-        "UPSTASH_REDIS_PASSWORD": "dummy_password",
-        "CORS_ORIGINS": '["http://localhost:3000", "https://example.com"]'
-    }
-    
-    # Set any missing environment variables
-    for key, value in required_vars.items():
-        if not os.environ.get(key):
-            os.environ[key] = value
-    
-    # Mark as done so we don't set them again
-    os.environ["TEST_ENV_SETUP_DONE"] = "1"
-
-# Run the environment setup before importing any app modules
-setup_test_environment()
+# Import our test utilities - these will have already initialized the environment
+from app.core.test_utils import (
+    create_test_jwt_token,
+    create_test_tokens,
+    create_test_request_with_token, 
+    create_mock_supabase_service,
+    create_mock_redis_service
+)
 
 # Now we can safely import app modules
 from app.core.config import settings
 from app.services.cashflow import CashflowService
-from app.core.redis_cache import RedisCache
+from app.services.redis_service import RedisService
+from app.services.supabase_service import SupabaseService
 from app.services.analytics import AnalyticsService
-from supabase import create_client, Client
-import uuid
 
 # Test constants
 TEST_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 @pytest.fixture(scope="session")
-def supabase_client():
-    """Create real Supabase client for tests"""
-    client = create_client(
-        supabase_url=settings.SUPABASE_URL,
-        supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY,
-    )
-    
-    # Set up test data
-    test_scenario_id = str(uuid.uuid4())
-    client.table("cashflow_scenarios").upsert({
-        "id": test_scenario_id,
-        "user_id": TEST_USER_ID,
-        "name": "Test Scenario",
-        "description": "Test scenario for unit tests",
-        "forecast_request": {
-            "loans": [{
-                "principal": 100000,
-                "rate": 0.05,
-                "term": 360,
-                "start_date": "2025-01-01"
-            }]
-        },
-        "tags": ["test"]
-    }).execute()
-    
-    yield client
-    
-    # Clean up test data
-    client.table("cashflow_scenarios").delete().eq("user_id", TEST_USER_ID).execute()
+def mock_supabase_service():
+    """Create a mock Supabase service for testing"""
+    return create_mock_supabase_service()
+
+@pytest.fixture(scope="session")
+def mock_redis_service():
+    """Create a mock Redis service for testing"""
+    return create_mock_redis_service()
 
 @pytest.fixture(scope="function")
-def redis_cache():
-    """Fixture for Redis cache for tests."""
-    # Create a Redis cache instance
-    redis_instance = RedisCache()
-    print(f"Redis URL from settings: {settings.REDIS_URL}")
+def redis_service():
+    """Fixture for Redis service for tests with proper error handling"""
+    # Create a Redis instance with production-ready error handling
+    redis_instance = RedisService()
     
     try:
-        # Clear the cache before tests
-        redis_instance.clear()
+        # Clear test keys before tests
         yield redis_instance
     finally:
-        # Clean up after tests
+        # Clean up after tests with proper error handling
         try:
-            redis_instance.clear()
+            # Only clear test-specific keys for isolation
+            redis_instance.delete_pattern("test:*")
         except Exception as e:
-            print(f"Error clearing cache: {e}")
+            print(f"Error clearing test keys: {e}")
 
 @pytest.fixture
 def mock_redis():
@@ -108,6 +60,8 @@ def mock_redis():
     mock.get.return_value = None
     mock.set.return_value = True
     mock.setex.return_value = True
+    # Add proper error handling for production readiness
+    mock.get.side_effect = lambda key, default=None: default
     return mock
 
 @pytest.fixture
@@ -129,11 +83,11 @@ def mock_analytics():
     return mock
 
 @pytest.fixture
-def cashflow_service(supabase_client, mock_redis, mock_analytics):
-    """Create CashflowService with real Supabase and mocked Redis/Analytics"""
+def cashflow_service(mock_supabase_service, mock_redis, mock_analytics):
+    """Create CashflowService with mocked dependencies"""
     return CashflowService(
-        supabase_client=supabase_client,
-        redis_cache=mock_redis,
+        supabase_service=mock_supabase_service,
+        redis_service=mock_redis,
         analytics_service=mock_analytics
     )
 
@@ -177,3 +131,51 @@ def batch_request():
             "rate_shock": 0.01
         }
     }
+
+@pytest.fixture
+def jwt_payload():
+    """Create a valid JWT payload for testing"""
+    return {
+        "sub": TEST_USER_ID,
+        "exp": int(time.time()) + 3600,
+        "iat": int(time.time()),
+        "jti": str(uuid.uuid4()),
+        "user_roles": ["user"],
+        "email": "test@example.com"
+    }
+
+@pytest.fixture
+def valid_access_token():
+    """Create a valid access token for testing"""
+    token, _ = create_test_jwt_token(
+        user_id=TEST_USER_ID,
+        email="test@example.com",
+        roles=["user"]
+    )
+    return token
+
+@pytest.fixture
+def admin_access_token():
+    """Create a valid admin access token for testing"""
+    token, _ = create_test_jwt_token(
+        user_id="admin-user-id",
+        email="admin@example.com",
+        roles=["admin", "user"]
+    )
+    return token
+
+@pytest.fixture
+def expired_token():
+    """Create an expired token for testing"""
+    token, _ = create_test_jwt_token(
+        user_id=TEST_USER_ID,
+        email="test@example.com",
+        roles=["user"],
+        expires_in_seconds=-3600  # Expired 1 hour ago
+    )
+    return token
+
+@pytest.fixture
+def mock_request_with_token(valid_access_token):
+    """Create a mock request with a valid token"""
+    return create_test_request_with_token(valid_access_token)

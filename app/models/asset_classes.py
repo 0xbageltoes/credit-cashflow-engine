@@ -105,7 +105,7 @@ class BaseAsset(BaseModel):
             return values['term_months']
         return v
     
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def check_remaining_term(cls, values):
         """Validate that remaining term is not greater than original term"""
         if (values.get('remaining_term_months') is not None and 
@@ -217,7 +217,7 @@ class CLOCDO(BaseAsset):
             raise ValueError("At least one tranche must be defined")
         return v
     
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_tranche_total(cls, values):
         """Validate that tranche balance total doesn't exceed collateral pool balance"""
         if 'tranches' in values and 'collateral_pool_balance' in values:

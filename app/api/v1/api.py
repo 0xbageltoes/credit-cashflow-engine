@@ -39,6 +39,7 @@ api_router.include_router(asset_classes_router, prefix="/asset-classes", tags=["
 api_router.include_router(stress_testing_router, prefix="/asset-classes", tags=["stress-testing"])
 api_router.include_router(specialized_assets_router, prefix="/specialized-assets", tags=["specialized-assets"])
 api_router.include_router(monte_carlo_router, prefix="/monte-carlo", tags=["monte-carlo"])
+api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 
 # Include WebSocket router (No prefix for WebSocket endpoints)
 api_router.include_router(websocket_router, tags=["websockets"])

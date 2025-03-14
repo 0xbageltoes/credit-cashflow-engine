@@ -10,7 +10,7 @@ The service is designed to be resilient with graceful fallbacks when Redis is un
 import logging
 import json
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Set
 import redis
 import redis.asyncio
 from redis.exceptions import RedisError
@@ -469,3 +469,326 @@ class RedisService:
                 self._sync_client.close()
             except Exception:
                 pass
+
+    async def keys(self, pattern: str) -> List[str]:
+        """
+        Get keys matching a pattern
+        
+        Args:
+            pattern: The pattern to match
+            
+        Returns:
+            List of matching keys
+        """
+        if self._connection_error or self._async_client is None:
+            logger.warning("Redis connection unavailable, returning empty list for keys")
+            return []
+        
+        try:
+            # Use scan_iter for better performance with large datasets
+            keys: Set[str] = set()
+            async for key in self._async_client.scan_iter(match=pattern, count=1000):
+                keys.add(key)
+            
+            return list(keys)
+        
+        except RedisError as e:
+            logger.error(f"Redis error getting keys with pattern {pattern}: {str(e)}")
+            return []
+        
+        except Exception as e:
+            logger.error(f"Unexpected error getting keys with pattern {pattern}: {str(e)}")
+            return []
+    
+    def keys_sync(self, pattern: str) -> List[str]:
+        """
+        Get keys matching a pattern synchronously
+        
+        Args:
+            pattern: The pattern to match
+            
+        Returns:
+            List of matching keys
+        """
+        if self._connection_error or self._sync_client is None:
+            logger.warning("Redis connection unavailable, returning empty list for keys")
+            return []
+        
+        try:
+            # Use scan_iter for better performance with large datasets
+            keys: Set[str] = set()
+            for key in self._sync_client.scan_iter(match=pattern, count=1000):
+                keys.add(key)
+            
+            return list(keys)
+        
+        except RedisError as e:
+            logger.error(f"Redis error getting keys with pattern {pattern}: {str(e)}")
+            return []
+        
+        except Exception as e:
+            logger.error(f"Unexpected error getting keys with pattern {pattern}: {str(e)}")
+            return []
+    
+    async def delete_pattern(self, pattern: str) -> int:
+        """
+        Delete keys matching a pattern
+        
+        Args:
+            pattern: The pattern to match
+            
+        Returns:
+            Number of keys deleted
+        """
+        if self._connection_error or self._async_client is None:
+            logger.warning("Redis connection unavailable, skipping delete pattern operation")
+            return 0
+        
+        try:
+            # Get all keys matching the pattern
+            keys = await self.keys(pattern)
+            
+            if not keys:
+                return 0
+            
+            # Delete the keys
+            count = await self._async_client.delete(*keys)
+            return count
+        
+        except RedisError as e:
+            logger.error(f"Redis error deleting keys with pattern {pattern}: {str(e)}")
+            return 0
+        
+        except Exception as e:
+            logger.error(f"Unexpected error deleting keys with pattern {pattern}: {str(e)}")
+            return 0
+    
+    def delete_pattern_sync(self, pattern: str) -> int:
+        """
+        Delete keys matching a pattern synchronously
+        
+        Args:
+            pattern: The pattern to match
+            
+        Returns:
+            Number of keys deleted
+        """
+        if self._connection_error or self._sync_client is None:
+            logger.warning("Redis connection unavailable, skipping delete pattern operation")
+            return 0
+        
+        try:
+            # Get all keys matching the pattern
+            keys = self.keys_sync(pattern)
+            
+            if not keys:
+                return 0
+            
+            # Delete the keys
+            count = self._sync_client.delete(*keys)
+            return count
+        
+        except RedisError as e:
+            logger.error(f"Redis error deleting keys with pattern {pattern}: {str(e)}")
+            return 0
+        
+        except Exception as e:
+            logger.error(f"Unexpected error deleting keys with pattern {pattern}: {str(e)}")
+            return 0
+    
+    async def get_ttl(self, key: str) -> Optional[int]:
+        """
+        Get the TTL of a key
+        
+        Args:
+            key: The key to get TTL for
+            
+        Returns:
+            TTL in seconds, None if key does not exist or has no TTL
+        """
+        if self._connection_error or self._async_client is None:
+            logger.warning("Redis connection unavailable, returning None for TTL")
+            return None
+        
+        try:
+            ttl = await self._async_client.ttl(key)
+            return ttl if ttl > 0 else None
+        
+        except RedisError as e:
+            logger.error(f"Redis error getting TTL for key {key}: {str(e)}")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Unexpected error getting TTL for key {key}: {str(e)}")
+            return None
+    
+    def get_ttl_sync(self, key: str) -> Optional[int]:
+        """
+        Get the TTL of a key synchronously
+        
+        Args:
+            key: The key to get TTL for
+            
+        Returns:
+            TTL in seconds, None if key does not exist or has no TTL
+        """
+        if self._connection_error or self._sync_client is None:
+            logger.warning("Redis connection unavailable, returning None for TTL")
+            return None
+        
+        try:
+            ttl = self._sync_client.ttl(key)
+            return ttl if ttl > 0 else None
+        
+        except RedisError as e:
+            logger.error(f"Redis error getting TTL for key {key}: {str(e)}")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Unexpected error getting TTL for key {key}: {str(e)}")
+            return None
+    
+    async def increment(self, key: str, amount: int = 1, ttl: Optional[int] = None) -> Optional[int]:
+        """
+        Increment a key by a given amount
+        
+        Args:
+            key: The key to increment
+            amount: The amount to increment by
+            ttl: Optional TTL to set after incrementing
+            
+        Returns:
+            The new value after incrementing, None if failed
+        """
+        if self._connection_error or self._async_client is None:
+            logger.warning("Redis connection unavailable, skipping increment operation")
+            return None
+        
+        try:
+            # Increment the key
+            result = await self._async_client.incrby(key, amount)
+            
+            # Set TTL if provided
+            if ttl is not None:
+                await self.expire(key, ttl)
+            
+            return result
+        
+        except RedisError as e:
+            logger.error(f"Redis error incrementing key {key}: {str(e)}")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Unexpected error incrementing key {key}: {str(e)}")
+            return None
+    
+    def increment_sync(self, key: str, amount: int = 1, ttl: Optional[int] = None) -> Optional[int]:
+        """
+        Increment a key by a given amount synchronously
+        
+        Args:
+            key: The key to increment
+            amount: The amount to increment by
+            ttl: Optional TTL to set after incrementing
+            
+        Returns:
+            The new value after incrementing, None if failed
+        """
+        if self._connection_error or self._sync_client is None:
+            logger.warning("Redis connection unavailable, skipping increment operation")
+            return None
+        
+        try:
+            # Increment the key
+            result = self._sync_client.incrby(key, amount)
+            
+            # Set TTL if provided
+            if ttl is not None:
+                self.expire_sync(key, ttl)
+            
+            return result
+        
+        except RedisError as e:
+            logger.error(f"Redis error incrementing key {key}: {str(e)}")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Unexpected error incrementing key {key}: {str(e)}")
+            return None
+    
+    async def invalidate_user_tokens(self, user_id: str) -> int:
+        """
+        Invalidate all tokens for a specific user
+        
+        This is critical for security operations like logout, 
+        password change, or account compromise detection.
+        
+        Args:
+            user_id: The user ID to invalidate tokens for
+            
+        Returns:
+            Number of tokens invalidated
+        """
+        if self._connection_error or self._async_client is None:
+            logger.warning("Redis connection unavailable, skipping token invalidation")
+            return 0
+        
+        try:
+            # Get all tokens for this user
+            token_pattern = f"jwt_payload:*"
+            
+            # Get all token keys
+            token_keys = await self.keys(token_pattern)
+            
+            # Check each token payload for the user ID
+            invalidated_count = 0
+            for key in token_keys:
+                try:
+                    token_data = await self.get(key)
+                    if token_data:
+                        try:
+                            payload = json.loads(token_data)
+                            if payload.get("sub") == user_id:
+                                # Delete this token
+                                if await self.delete(key):
+                                    invalidated_count += 1
+                        except json.JSONDecodeError:
+                            # Skip invalid JSON
+                            logger.warning(f"Invalid JSON in token payload: {key}")
+                except Exception as e:
+                    logger.error(f"Error processing token key {key}: {str(e)}")
+            
+            return invalidated_count
+        
+        except Exception as e:
+            logger.error(f"Error invalidating tokens for user {user_id}: {str(e)}")
+            return 0
+    
+    async def initialize_from_config(self):
+        """Initialize Redis client with configuration from settings"""
+        if not settings.REDIS_ENABLED:
+            logger.info("Redis is disabled, skipping initialization")
+            self._connection_error = True
+            return
+        
+        try:
+            # Get connection parameters from settings
+            params = settings.REDIS_CONNECTION_PARAMS
+            
+            # Initialize async client
+            self._async_client = redis.asyncio.Redis(**params)
+            
+            # Initialize sync client
+            self._sync_client = redis.Redis(**params)
+            
+            # Run health check
+            if await self.health_check():
+                self._connection_error = False
+                logger.info("Redis clients initialized successfully from config")
+            else:
+                self._connection_error = True
+                logger.error("Redis health check failed during initialization from config")
+        
+        except Exception as e:
+            self._connection_error = True
+            logger.error(f"Error initializing Redis clients from config: {str(e)}")

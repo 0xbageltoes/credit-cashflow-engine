@@ -21,13 +21,22 @@ from typing import Dict, List, Any, Optional, Tuple
 import json
 import uuid
 import traceback
+import scipy.stats as stats
+import hashlib
 
 from app.models.monte_carlo import (
     MonteCarloSimulationRequest, 
     MonteCarloSimulationResult,
     SimulationStatus,
     SimulationResult,
-    DistributionType
+    DistributionType,
+    ScenarioDefinition,
+    SavedSimulation
+)
+from app.models.analytics import (
+    StatisticalOutputs,
+    EconomicFactors,
+    MonteCarloResult
 )
 from app.core.config import settings
 from app.services.redis_service import RedisService
@@ -69,7 +78,8 @@ class MonteCarloSimulationService:
         self, 
         request: MonteCarloSimulationRequest, 
         user_id: str,
-        use_cache: bool = True
+        use_cache: bool = True,
+        progress_callback = None
     ) -> MonteCarloSimulationResult:
         """
         Run a Monte Carlo simulation based on the provided request
@@ -78,6 +88,7 @@ class MonteCarloSimulationService:
             request: The simulation request
             user_id: ID of the user running the simulation
             use_cache: Whether to use caching
+            progress_callback: Optional callback function for progress updates
             
         Returns:
             The simulation result
@@ -95,16 +106,27 @@ class MonteCarloSimulationService:
             num_simulations=request.num_simulations,
             num_completed=0,
             summary_statistics={},
-            percentiles={}
+            percentiles={},
+            detailed_paths=[]
         )
         
         # Check cache if enabled
+        cache_hit = False
         if use_cache:
             cache_key = self._generate_cache_key(request, user_id)
-            cached_result = await self._get_from_cache(cache_key)
-            if cached_result:
-                logger.info(f"Found cached result for simulation {simulation_id}")
-                return cached_result
+            try:
+                cached_data = await self.redis_service.get(cache_key)
+                if cached_data:
+                    try:
+                        logger.info(f"Found cached result for simulation {simulation_id}")
+                        result_dict = json.loads(cached_data)
+                        return MonteCarloSimulationResult(**result_dict)
+                    except (json.JSONDecodeError, TypeError, ValueError) as e:
+                        logger.warning(f"Error parsing cached result: {str(e)}. Proceeding with calculation.")
+                        # Cache is corrupted, will be overwritten
+            except Exception as e:
+                logger.warning(f"Error checking cache: {str(e)}. Proceeding with calculation.")
+                # Continue with the calculation if cache check fails
         
         try:
             logger.info(f"Starting Monte Carlo simulation {simulation_id} with {request.num_simulations} iterations")
@@ -130,6 +152,10 @@ class MonteCarloSimulationService:
                         for var in request.variables
                     }
                     
+                    # Apply economic factors if provided
+                    if request.economic_factors:
+                        simulation_variables = self.apply_economic_factors(simulation_variables, request.economic_factors)
+                    
                     # Run the single simulation
                     sim_result = self._run_single_simulation(
                         request, 
@@ -149,7 +175,11 @@ class MonteCarloSimulationService:
                     
                     # Update progress
                     result.num_completed = i + 1
-                
+                    
+                    # Call progress callback if provided
+                    if progress_callback:
+                        progress_callback(i + 1, request.num_simulations)
+            
             # Calculate summary statistics
             with CalculationTracker(f"monte_carlo_calculate_statistics_{simulation_id}"):
                 for metric, values in all_metrics.items():
@@ -163,7 +193,7 @@ class MonteCarloSimulationService:
                     
                     # Calculate percentiles
                     result.percentiles[metric] = {
-                        float(p): float(np.percentile(values, p * 100))
+                        p: float(np.percentile(values, p * 100))
                         for p in request.percentiles
                     }
             
@@ -176,12 +206,29 @@ class MonteCarloSimulationService:
             if request.include_detailed_paths:
                 result.detailed_paths = all_cashflows
             
+            # Generate enhanced Monte Carlo result
+            enhanced_result = self.generate_enhanced_monte_carlo_result(
+                simulation_id,
+                request.num_simulations,
+                request.projection_months,
+                all_metrics,
+                all_cashflows,
+                result.execution_time_seconds
+            )
+            
             # Cache the result if enabled
-            if use_cache:
-                await self._save_to_cache(cache_key, result)
+            if use_cache and not cache_hit:
+                try:
+                    cache_key = self._generate_cache_key(request, user_id)
+                    result_json = result.json()
+                    ttl = settings.CACHE_TTL_SECONDS or 3600  # Default to 1 hour
+                    await self.redis_service.set(cache_key, result_json, ttl=ttl)
+                    logger.debug(f"Cached result for simulation {simulation_id} with TTL {ttl}s")
+                except Exception as e:
+                    logger.warning(f"Error saving result to cache: {str(e)}. Continuing without caching.")
             
             logger.info(f"Completed Monte Carlo simulation {simulation_id} in {result.execution_time_seconds:.2f} seconds")
-            return result
+            return enhanced_result
         
         except Exception as e:
             # Log the error with traceback
@@ -196,658 +243,569 @@ class MonteCarloSimulationService:
             
             return result
     
-    def _generate_correlated_variables(
+    def calculate_enhanced_statistics(
         self, 
-        request: MonteCarloSimulationRequest
-    ) -> Dict[str, np.ndarray]:
+        values: np.ndarray, 
+        percentiles: List[int] = [1, 5, 10, 25, 50, 75, 90, 95, 99], 
+        confidence_level: float = 0.95
+    ) -> StatisticalOutputs:
         """
-        Generate correlated random variables for all simulations
+        Calculate comprehensive statistical outputs from simulation values
         
         Args:
-            request: The simulation request
+            values: Array of simulation values
+            percentiles: Percentiles to calculate
+            confidence_level: Confidence level for intervals
             
         Returns:
-            Dictionary mapping variable names to arrays of random values
+            StatisticalOutputs with comprehensive statistics
         """
-        num_simulations = request.num_simulations
-        num_variables = len(request.variables)
-        
-        # Generate uncorrelated random variables
-        uncorrelated = np.zeros((num_variables, num_simulations))
-        for i, var in enumerate(request.variables):
-            uncorrelated[i] = self._generate_random_variable(
-                var.distribution,
-                var.parameters,
-                num_simulations
-            )
-        
-        # If no correlation matrix provided, return uncorrelated variables
-        if not request.correlation_matrix:
-            return {
-                var.name: uncorrelated[i] 
-                for i, var in enumerate(request.variables)
-            }
-        
-        # Create correlation matrix
-        correlation_matrix = np.eye(num_variables)
-        for i in range(num_variables):
-            for j in range(i+1, num_variables):
-                var1 = request.variables[i].name
-                var2 = request.variables[j].name
-                key = f"{var1}:{var2}"
-                reverse_key = f"{var2}:{var1}"
-                
-                # Look up correlation coefficient
-                if key in request.correlation_matrix.correlations:
-                    corr = request.correlation_matrix.correlations[key]
-                elif reverse_key in request.correlation_matrix.correlations:
-                    corr = request.correlation_matrix.correlations[reverse_key]
-                else:
-                    corr = 0.0
-                
-                correlation_matrix[i, j] = corr
-                correlation_matrix[j, i] = corr
-        
-        # Calculate Cholesky decomposition
         try:
-            L = np.linalg.cholesky(correlation_matrix)
-        except np.linalg.LinAlgError:
-            # If matrix is not positive definite, adjust it
-            logger.warning("Correlation matrix is not positive definite. Applying adjustment.")
+            if len(values) < 2:
+                raise ValueError("At least two values are required to calculate statistics")
             
-            # Calculate nearest positive definite matrix
-            eigenvalues, eigenvectors = np.linalg.eigh(correlation_matrix)
-            eigenvalues = np.maximum(eigenvalues, 1e-6)
-            adjusted_matrix = eigenvectors @ np.diag(eigenvalues) @ eigenvectors.T
+            # Basic statistics
+            mean_value = float(np.mean(values))
+            median_value = float(np.median(values))
+            std_dev = float(np.std(values, ddof=1))  # Use sample standard deviation
+            min_value = float(np.min(values))
+            max_value = float(np.max(values))
             
-            # Ensure the diagonal is 1
-            d = np.sqrt(np.diag(adjusted_matrix))
-            adjusted_matrix = adjusted_matrix / np.outer(d, d)
+            # Calculate percentiles
+            percentile_values = {}
+            for p in percentiles:
+                percentile_values[str(p)] = float(np.percentile(values, p))
             
-            # Calculate Cholesky decomposition
-            L = np.linalg.cholesky(adjusted_matrix)
-        
-        # Generate correlated random variables
-        correlated = L @ uncorrelated
-        
-        # Transform back to original distributions if needed
-        # (This is a simplified approach; more complex methods might be needed)
-        
-        # Return dictionary mapping variable names to arrays of values
-        return {
-            var.name: correlated[i] 
-            for i, var in enumerate(request.variables)
-        }
-    
-    def _generate_random_variable(
-        self, 
-        distribution: DistributionType,
-        parameters: Dict[str, float],
-        size: int
-    ) -> np.ndarray:
-        """
-        Generate random variables with the specified distribution
-        
-        Args:
-            distribution: The type of distribution
-            parameters: The parameters for the distribution
-            size: The number of random variables to generate
+            # Higher-order moments
+            skewness = float(stats.skew(values))
+            kurtosis = float(stats.kurtosis(values))
             
-        Returns:
-            Array of random variables
-        """
-        if distribution == DistributionType.NORMAL:
-            mean = parameters.get('mean', 0.0)
-            std_dev = parameters.get('std_dev', 1.0)
-            return self._rng.normal(mean, std_dev, size=size)
-        
-        elif distribution == DistributionType.LOGNORMAL:
-            mean = parameters.get('mean', 0.0)
-            std_dev = parameters.get('std_dev', 1.0)
-            return self._rng.lognormal(mean, std_dev, size=size)
-        
-        elif distribution == DistributionType.UNIFORM:
-            min_val = parameters.get('min', 0.0)
-            max_val = parameters.get('max', 1.0)
-            return self._rng.uniform(min_val, max_val, size=size)
-        
-        elif distribution == DistributionType.TRIANGULAR:
-            min_val = parameters.get('min', 0.0)
-            mode = parameters.get('mode', 0.5)
-            max_val = parameters.get('max', 1.0)
-            return self._rng.triangular(min_val, mode, max_val, size=size)
-        
-        elif distribution == DistributionType.BETA:
-            alpha = parameters.get('alpha', 1.0)
-            beta = parameters.get('beta', 1.0)
-            min_val = parameters.get('min', 0.0)
-            max_val = parameters.get('max', 1.0)
-            raw = self._rng.beta(alpha, beta, size=size)
-            return min_val + (max_val - min_val) * raw
-        
-        elif distribution == DistributionType.CUSTOM:
-            values = parameters.get('values', [0.0, 1.0])
-            probabilities = parameters.get('probabilities', [0.5, 0.5])
-            return self._rng.choice(values, size=size, p=probabilities)
-        
-        else:
-            raise ValueError(f"Unsupported distribution type: {distribution}")
+            # Confidence intervals
+            alpha = 1 - confidence_level
+            dof = len(values) - 1  # Degrees of freedom
+            t_crit = stats.t.ppf(1 - alpha/2, dof)
             
-    def _run_single_simulation(
-        self,
-        request: MonteCarloSimulationRequest,
-        simulation_variables: Dict[str, float],
-        simulation_id: int
-    ) -> SimulationResult:
-        """
-        Run a single simulation with the given variables
-        
-        Args:
-            request: The simulation request
-            simulation_variables: The values of the random variables for this simulation
-            simulation_id: The ID of this simulation (for tracking)
+            # Standard error of the mean
+            sem = std_dev / np.sqrt(len(values))
             
-        Returns:
-            The result of the simulation
-        """
-        # Apply the simulation variables to the asset parameters
-        modified_parameters = self._apply_variables_to_parameters(
-            request.asset_parameters,
-            simulation_variables
-        )
-        
-        # Run the appropriate asset class handler
-        metrics = {}
-        cashflows = None
-        
-        # Get the appropriate handler for the asset class
-        if request.asset_class.lower() == "consumer_credit":
-            result = self._run_consumer_credit_simulation(request, modified_parameters)
-            metrics = result["metrics"]
-            cashflows = result.get("cashflows")
-        
-        elif request.asset_class.lower() == "commercial_loan":
-            result = self._run_commercial_loan_simulation(request, modified_parameters)
-            metrics = result["metrics"]
-            cashflows = result.get("cashflows")
-        
-        elif request.asset_class.lower() == "clo_cdo":
-            result = self._run_clo_cdo_simulation(request, modified_parameters)
-            metrics = result["metrics"]
-            cashflows = result.get("cashflows")
-        
-        else:
-            raise ValueError(f"Unsupported asset class: {request.asset_class}")
-        
-        # Create and return the simulation result
-        return SimulationResult(
-            simulation_id=simulation_id,
-            variables=simulation_variables,
-            metrics=metrics,
-            cashflows=cashflows
-        )
-    
-    def _apply_variables_to_parameters(
-        self,
-        parameters: Dict[str, Any],
-        variables: Dict[str, float]
-    ) -> Dict[str, Any]:
-        """
-        Apply the simulation variables to the asset parameters
-        
-        This method modifies the asset parameters based on the simulation variables.
-        It supports both direct parameter replacement and parameterized formulas.
-        
-        Args:
-            parameters: The original asset parameters
-            variables: The simulation variables
+            # Confidence intervals
+            ci_lower = mean_value - t_crit * sem
+            ci_upper = mean_value + t_crit * sem
             
-        Returns:
-            The modified asset parameters
-        """
-        # Make a deep copy of the parameters to avoid modifying the original
-        import copy
-        result = copy.deepcopy(parameters)
-        
-        # Apply variable replacements
-        # This is a simple implementation; more complex formulas could be supported
-        for param_key, param_value in result.items():
-            # Check if this parameter should be replaced by a variable
-            if isinstance(param_value, str) and param_value.startswith("$"):
-                var_name = param_value[1:]  # Remove the $ prefix
-                if var_name in variables:
-                    result[param_key] = variables[var_name]
-            
-            # Check if this parameter should be modified by a formula
-            # Format: "$formula:param_name*factor+offset"
-            elif isinstance(param_value, str) and param_value.startswith("$formula:"):
-                formula = param_value[9:]  # Remove the $formula: prefix
-                
-                # Parse and evaluate the formula
-                try:
-                    # Replace variable references with their values
-                    for var_name, var_value in variables.items():
-                        formula = formula.replace(f"${var_name}", str(var_value))
-                    
-                    # Evaluate the formula
-                    result[param_key] = eval(formula)
-                except Exception as e:
-                    logger.error(f"Error evaluating formula {formula}: {str(e)}")
-                    # Keep the original value if there's an error
-            
-            # Recursively process nested dictionaries
-            elif isinstance(param_value, dict):
-                result[param_key] = self._apply_variables_to_parameters(param_value, variables)
-            
-            # Process lists of dictionaries
-            elif isinstance(param_value, list) and all(isinstance(item, dict) for item in param_value):
-                result[param_key] = [
-                    self._apply_variables_to_parameters(item, variables)
-                    for item in param_value
-                ]
-        
-        return result
-    
-    def _run_consumer_credit_simulation(
-        self,
-        request: MonteCarloSimulationRequest,
-        parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Run a simulation for consumer credit assets
-        
-        Args:
-            request: The simulation request
-            parameters: The modified asset parameters
-            
-        Returns:
-            Dictionary with metrics and optional cashflows
-        """
-        # Use the consumer credit handler to perform the analysis
-        try:
-            # Create a request object for the handler
-            from app.models.asset_classes import AssetPoolAnalysisRequest, AssetPool
-            
-            # Extract assets from parameters
-            assets = parameters.get("assets", [])
-            
-            # Create asset pool
-            pool = AssetPool(
-                pool_name=f"Simulation_{request.name}",
-                assets=assets,
-                cut_off_date=request.analysis_date
-            )
-            
-            # Create analysis request
-            analysis_request = AssetPoolAnalysisRequest(
-                pool=pool,
-                analysis_date=request.analysis_date,
-                discount_rate=request.discount_rate,
-                include_cashflows=request.include_detailed_paths
-            )
-            
-            # Run analysis
-            analysis_result = self.consumer_credit_handler.analyze_pool(analysis_request)
-            
-            # Extract metrics and cashflows
-            result = {
-                "metrics": analysis_result.metrics.dict() if analysis_result.metrics else {},
-            }
-            
-            if request.include_detailed_paths and analysis_result.cashflows:
-                result["cashflows"] = [cf.dict() for cf in analysis_result.cashflows]
-            
-            return result
-        
-        except Exception as e:
-            logger.error(f"Error in consumer credit simulation: {str(e)}")
-            logger.error(traceback.format_exc())
-            return {"metrics": {"error": str(e)}}
-    
-    def _run_commercial_loan_simulation(
-        self,
-        request: MonteCarloSimulationRequest,
-        parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Run a simulation for commercial loan assets
-        
-        Args:
-            request: The simulation request
-            parameters: The modified asset parameters
-            
-        Returns:
-            Dictionary with metrics and optional cashflows
-        """
-        # Similar implementation to consumer credit but using commercial loan handler
-        try:
-            # Create a request object for the handler
-            from app.models.asset_classes import AssetPoolAnalysisRequest, AssetPool
-            
-            # Extract assets from parameters
-            assets = parameters.get("assets", [])
-            
-            # Create asset pool
-            pool = AssetPool(
-                pool_name=f"Simulation_{request.name}",
-                assets=assets,
-                cut_off_date=request.analysis_date
-            )
-            
-            # Create analysis request
-            analysis_request = AssetPoolAnalysisRequest(
-                pool=pool,
-                analysis_date=request.analysis_date,
-                discount_rate=request.discount_rate,
-                include_cashflows=request.include_detailed_paths
-            )
-            
-            # Run analysis
-            analysis_result = self.commercial_loan_handler.analyze_pool(analysis_request)
-            
-            # Extract metrics and cashflows
-            result = {
-                "metrics": analysis_result.metrics.dict() if analysis_result.metrics else {},
-            }
-            
-            if request.include_detailed_paths and analysis_result.cashflows:
-                result["cashflows"] = [cf.dict() for cf in analysis_result.cashflows]
-            
-            return result
-        
-        except Exception as e:
-            logger.error(f"Error in commercial loan simulation: {str(e)}")
-            logger.error(traceback.format_exc())
-            return {"metrics": {"error": str(e)}}
-    
-    def _run_clo_cdo_simulation(
-        self,
-        request: MonteCarloSimulationRequest,
-        parameters: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Run a simulation for CLO/CDO assets
-        
-        Args:
-            request: The simulation request
-            parameters: The modified asset parameters
-            
-        Returns:
-            Dictionary with metrics and optional cashflows
-        """
-        # Similar implementation to consumer credit but using CLO/CDO handler
-        try:
-            # Create a request object for the handler
-            from app.models.asset_classes import AssetPoolAnalysisRequest, AssetPool
-            
-            # Extract assets from parameters
-            assets = parameters.get("assets", [])
-            
-            # Create asset pool
-            pool = AssetPool(
-                pool_name=f"Simulation_{request.name}",
-                assets=assets,
-                cut_off_date=request.analysis_date
-            )
-            
-            # Create analysis request
-            analysis_request = AssetPoolAnalysisRequest(
-                pool=pool,
-                analysis_date=request.analysis_date,
-                discount_rate=request.discount_rate,
-                include_cashflows=request.include_detailed_paths
-            )
-            
-            # Run analysis
-            analysis_result = self.clo_cdo_handler.analyze_pool(analysis_request)
-            
-            # Extract metrics and cashflows
-            result = {
-                "metrics": analysis_result.metrics.dict() if analysis_result.metrics else {},
-            }
-            
-            if request.include_detailed_paths and analysis_result.cashflows:
-                result["cashflows"] = [cf.dict() for cf in analysis_result.cashflows]
-            
-            return result
-        
-        except Exception as e:
-            logger.error(f"Error in CLO/CDO simulation: {str(e)}")
-            logger.error(traceback.format_exc())
-            return {"metrics": {"error": str(e)}}
-    
-    def _generate_cache_key(
-        self, 
-        request: MonteCarloSimulationRequest,
-        user_id: str
-    ) -> str:
-        """
-        Generate a cache key for the simulation request
-        
-        Args:
-            request: The simulation request
-            user_id: The user ID
-            
-        Returns:
-            A unique cache key
-        """
-        # Create a simplified version of the request for caching
-        cache_data = {
-            "user_id": user_id,
-            "name": request.name,
-            "num_simulations": request.num_simulations,
-            "asset_class": request.asset_class,
-            "analysis_date": request.analysis_date.isoformat(),
-            "projection_months": request.projection_months,
-            "variables": [
-                {
-                    "name": var.name,
-                    "distribution": str(var.distribution),
-                    "parameters": var.parameters
+            confidence_intervals = {
+                "mean": {
+                    "lower": float(ci_lower),
+                    "upper": float(ci_upper)
                 }
-                for var in request.variables
-            ]
-        }
-        
-        # Generate a hash of the request
-        import hashlib
-        cache_json = json.dumps(cache_data, sort_keys=True)
-        cache_hash = hashlib.md5(cache_json.encode()).hexdigest()
-        
-        return f"monte_carlo_simulation:{cache_hash}"
-    
-    async def _get_from_cache(self, cache_key: str) -> Optional[MonteCarloSimulationResult]:
+            }
+            
+            # Create result
+            return StatisticalOutputs(
+                mean=mean_value,
+                median=median_value,
+                std_dev=std_dev,
+                min_value=min_value,
+                max_value=max_value,
+                percentiles=percentile_values,
+                skewness=skewness,
+                kurtosis=kurtosis,
+                confidence_intervals=confidence_intervals
+            )
+        except Exception as e:
+            logger.error(f"Error calculating enhanced statistics: {e}")
+            logger.debug(f"Error traceback: {traceback.format_exc()}")
+            
+            # Return basic statistics if calculation fails
+            return StatisticalOutputs(
+                mean=float(np.mean(values)) if len(values) > 0 else 0.0,
+                median=float(np.median(values)) if len(values) > 0 else 0.0,
+                std_dev=float(np.std(values)) if len(values) > 0 else 0.0,
+                min_value=float(np.min(values)) if len(values) > 0 else 0.0,
+                max_value=float(np.max(values)) if len(values) > 0 else 0.0,
+                percentiles={"50": float(np.median(values)) if len(values) > 0 else 0.0}
+            )
+
+    def apply_economic_factors(
+        self, 
+        simulation_variables: Dict[str, float],
+        economic_factors: Optional[EconomicFactors] = None
+    ) -> Dict[str, float]:
         """
-        Get a simulation result from the cache
+        Apply economic factors to simulation variables based on correlation model
         
         Args:
-            cache_key: The cache key
+            simulation_variables: The base simulation variables
+            economic_factors: Economic factors to apply
             
         Returns:
-            The cached simulation result, or None if not found
+            Modified simulation variables
+        """
+        if not economic_factors:
+            return simulation_variables
+        
+        # Create a copy to avoid modifying the original
+        modified_variables = simulation_variables.copy()
+        
+        # Extract economic factors
+        factors_dict = economic_factors.model_dump() if hasattr(economic_factors, 'model_dump') else economic_factors
+        
+        # Apply economic factor adjustments to simulation variables
+        # Implement correlation model between economic factors and credit performance variables
+        
+        # Example: Modify default rate based on economic factors
+        if "default_rate" in modified_variables:
+            base_default = modified_variables["default_rate"]
+            
+            # Create adjustment based on economic factors
+            unemployment_effect = 0.2 * factors_dict.get("unemployment_rate", 0.0)
+            gdp_effect = -0.15 * factors_dict.get("gdp_growth", 0.0)
+            housing_effect = -0.1 * factors_dict.get("housing_price_index", 0.0)
+            
+            # Combined adjustment
+            default_adjustment = 1 + unemployment_effect + gdp_effect + housing_effect
+            
+            # Apply adjustment with reasonable bounds
+            modified_variables["default_rate"] = max(0.0, min(1.0, base_default * default_adjustment))
+        
+        # Example: Modify prepayment rate based on economic factors
+        if "prepayment_rate" in modified_variables:
+            base_prepayment = modified_variables["prepayment_rate"]
+            
+            # Create adjustment based on economic factors
+            interest_env = factors_dict.get("interest_rate_environment", "neutral")
+            interest_effect = -0.2 if interest_env == "rising" else 0.1 if interest_env == "falling" else 0.0
+            housing_effect = 0.15 * factors_dict.get("housing_price_index", 0.0)
+            
+            # Combined adjustment
+            prepayment_adjustment = 1 + interest_effect + housing_effect
+            
+            # Apply adjustment with reasonable bounds
+            modified_variables["prepayment_rate"] = max(0.0, min(1.0, base_prepayment * prepayment_adjustment))
+        
+        # Example: Modify recovery rate based on economic factors
+        if "recovery_rate" in modified_variables:
+            base_recovery = modified_variables["recovery_rate"]
+            
+            # Create adjustment based on economic factors
+            housing_effect = 0.25 * factors_dict.get("housing_price_index", 0.0)
+            gdp_effect = 0.1 * factors_dict.get("gdp_growth", 0.0)
+            
+            # Combined adjustment
+            recovery_adjustment = 1 + housing_effect + gdp_effect
+            
+            # Apply adjustment with reasonable bounds
+            modified_variables["recovery_rate"] = max(0.0, min(1.0, base_recovery * recovery_adjustment))
+        
+        return modified_variables
+    
+    def generate_enhanced_monte_carlo_result(
+        self,
+        simulation_id: str,
+        num_iterations: int,
+        time_horizon: int,
+        all_metrics: Dict[str, List[float]],
+        all_cashflows: Optional[List[Dict]] = None,
+        calculation_time: float = 0.0,
+        error: Optional[str] = None
+    ) -> MonteCarloResult:
+        """
+        Generate a comprehensive MonteCarloResult with enhanced statistical outputs
+        
+        Args:
+            simulation_id: Unique identifier for this simulation
+            num_iterations: Number of iterations performed
+            time_horizon: Time horizon in months
+            all_metrics: Dictionary of metric names to lists of values
+            all_cashflows: Optional list of cashflow projections
+            calculation_time: Calculation time in seconds
+            error: Optional error message
+            
+        Returns:
+            Comprehensive MonteCarloResult
         """
         try:
-            # Try to get from cache
-            cached_data = await self.redis_service.get(cache_key)
+            result = MonteCarloResult(
+                simulation_id=simulation_id,
+                num_iterations=num_iterations,
+                time_horizon=time_horizon,
+                calculation_time=calculation_time,
+                npv_stats=self.calculate_enhanced_statistics(np.array(all_metrics.get("npv", [0.0])))
+            )
             
-            if not cached_data:
-                return None
+            # Add additional statistics if available
+            if "irr" in all_metrics:
+                result.irr_stats = self.calculate_enhanced_statistics(np.array(all_metrics["irr"]))
             
-            # Deserialize the cached data
-            result_dict = json.loads(cached_data)
+            if "duration" in all_metrics:
+                result.duration_stats = self.calculate_enhanced_statistics(np.array(all_metrics["duration"]))
             
-            # Convert to MonteCarloSimulationResult
-            return MonteCarloSimulationResult(**result_dict)
-        
+            if "default" in all_metrics:
+                result.default_stats = self.calculate_enhanced_statistics(np.array(all_metrics["default"]))
+            
+            if "prepayment" in all_metrics:
+                result.prepayment_stats = self.calculate_enhanced_statistics(np.array(all_metrics["prepayment"]))
+            
+            # Create loss distribution
+            if "loss" in all_metrics:
+                loss_values = np.array(all_metrics["loss"])
+                percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+                result.loss_distribution = {
+                    str(p): float(np.percentile(loss_values, p))
+                    for p in percentiles
+                }
+            
+            # Add cashflow projections if available
+            if all_cashflows:
+                # Find best and worst case
+                if "npv" in all_metrics:
+                    npv_values = np.array(all_metrics["npv"])
+                    best_idx = np.argmax(npv_values)
+                    worst_idx = np.argmin(npv_values)
+                    
+                    if 0 <= best_idx < len(all_cashflows):
+                        result.best_case_cashflows = all_cashflows[best_idx]
+                    
+                    if 0 <= worst_idx < len(all_cashflows):
+                        result.worst_case_cashflows = all_cashflows[worst_idx]
+            
+            if error:
+                result.error = error
+            
+            return result
         except Exception as e:
-            logger.error(f"Error getting simulation from cache: {str(e)}")
-            return None
+            logger.error(f"Error generating enhanced Monte Carlo result: {e}")
+            logger.debug(f"Error traceback: {traceback.format_exc()}")
+            
+            # Return basic result with error information
+            return MonteCarloResult(
+                simulation_id=simulation_id,
+                num_iterations=num_iterations,
+                time_horizon=time_horizon,
+                calculation_time=calculation_time,
+                npv_stats=self.calculate_enhanced_statistics(np.array([0.0])),
+                error=str(e)
+            )
     
-    async def _save_to_cache(
+    async def cache_result(
         self, 
-        cache_key: str, 
-        result: MonteCarloSimulationResult
+        key: str, 
+        result: Any, 
+        ttl: int = 3600
     ) -> bool:
         """
-        Save a simulation result to the cache
+        Cache a result with robust error handling and retry logic
         
         Args:
-            cache_key: The cache key
-            result: The simulation result to cache
+            key: Cache key
+            result: Result to cache
+            ttl: Time to live in seconds
             
         Returns:
-            True if saved successfully, False otherwise
+            True if successful, False otherwise
         """
-        try:
-            # Serialize the result to JSON
-            result_json = result.json()
-            
-            # Save to cache with TTL
-            ttl = settings.CACHE_TTL_SECONDS or 3600  # Default to 1 hour
-            await self.redis_service.set(cache_key, result_json, ttl=ttl)
-            
-            return True
-        
-        except Exception as e:
-            logger.error(f"Error saving simulation to cache: {str(e)}")
+        if not self.redis_service:
+            logger.warning("Redis service not available. Skipping caching.")
             return False
             
-    def run_simulation_sync(
+        try:
+            # Serialize the result
+            if hasattr(result, 'json'):
+                result_json = result.json()
+            else:
+                import json
+                result_json = json.dumps(result)
+                
+            # Set with retry logic
+            for attempt in range(3):  # Try up to 3 times
+                try:
+                    await self.redis_service.set(key, result_json, ttl=ttl)
+                    logger.debug(f"Successfully cached result with key {key} and TTL {ttl}s")
+                    return True
+                except Exception as e:
+                    if attempt < 2:  # Don't log if last attempt
+                        logger.warning(f"Attempt {attempt+1} failed to cache result: {str(e)}. Retrying...")
+                    time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+            
+            # If we get here, all attempts failed
+            logger.warning("All attempts to cache result failed. Continuing without caching.")
+            return False
+                
+        except Exception as e:
+            logger.warning(f"Error serializing or caching result: {str(e)}. Continuing without caching.")
+            logger.debug(f"Error caching result - traceback: {traceback.format_exc()}")
+            return False
+    
+    async def get_cached_result(
         self, 
-        request: MonteCarloSimulationRequest, 
-        user_id: str,
-        use_cache: bool = True
-    ) -> MonteCarloSimulationResult:
+        key: str, 
+        result_type: Any = None
+    ) -> Optional[Any]:
         """
-        Synchronous version of run_simulation for use with Celery tasks
+        Get a cached result with robust error handling
+        
+        Args:
+            key: Cache key
+            result_type: Optional type to parse the result into
+            
+        Returns:
+            Cached result if found and valid, None otherwise
+        """
+        if not self.redis_service:
+            logger.debug("Redis service not available. Skipping cache check.")
+            return None
+            
+        try:
+            # Try to get the cached result
+            cached_data = await self.redis_service.get(key)
+            if not cached_data:
+                logger.debug(f"No cached data found for key {key}")
+                return None
+                
+            # Parse the result
+            if result_type and hasattr(result_type, 'parse_raw'):
+                # Parse into Pydantic model
+                try:
+                    return result_type.parse_raw(cached_data)
+                except Exception as e:
+                    logger.warning(f"Error parsing cached data into {result_type.__name__}: {str(e)}")
+                    return None
+            else:
+                # Parse as JSON
+                try:
+                    import json
+                    return json.loads(cached_data)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Error decoding cached JSON: {str(e)}")
+                    return None
+                
+        except Exception as e:
+            logger.warning(f"Error checking cache: {str(e)}. Proceeding without using cache.")
+            logger.debug(f"Error retrieving from cache - traceback: {traceback.format_exc()}")
+            return None
+    
+    async def run_enhanced_simulation(
+        self, 
+        request: Any, 
+        user_id: str,
+        use_cache: bool = True,
+        cache_ttl: int = 3600,
+        progress_callback = None
+    ) -> MonteCarloResult:
+        """
+        Run an enhanced Monte Carlo simulation with proper statistical outputs
         
         Args:
             request: The simulation request
             user_id: ID of the user running the simulation
             use_cache: Whether to use caching
+            cache_ttl: Cache TTL in seconds
+            progress_callback: Optional callback function for progress updates
             
         Returns:
-            The simulation result
+            MonteCarloResult with comprehensive statistics
         """
         # Generate a unique ID for this simulation
         simulation_id = str(uuid.uuid4())
         
-        # Initialize the result object
-        result = MonteCarloSimulationResult(
-            id=simulation_id,
-            name=request.name,
-            description=request.description,
-            status=SimulationStatus.PENDING,
-            start_time=datetime.now(),
-            num_simulations=request.num_simulations,
-            num_completed=0,
-            summary_statistics={},
-            percentiles={}
-        )
+        # Start time tracking
+        start_time = time.time()
         
-        # Check cache if enabled (using synchronous Redis client)
+        # Check cache if enabled
+        cache_hit = False
         if use_cache:
-            cache_key = self._generate_cache_key(request, user_id)
             try:
-                cached_data = self.redis_service.get_sync(cache_key)
-                if cached_data:
-                    logger.info(f"Found cached result for simulation {simulation_id}")
-                    result_dict = json.loads(cached_data)
-                    return MonteCarloSimulationResult(**result_dict)
+                # Generate cache key
+                from app.utils.cache_utils import generate_cache_key
+                cache_key = generate_cache_key(
+                    prefix="monte_carlo_enhanced",
+                    user_id=user_id,
+                    data=request.model_dump() if hasattr(request, 'model_dump') else request
+                )
+                
+                # Try to get from cache
+                cached_result = await self.get_cached_result(cache_key, MonteCarloResult)
+                if cached_result:
+                    logger.info(f"Found cached result for enhanced simulation {simulation_id}")
+                    return cached_result
+                    
             except Exception as e:
-                logger.error(f"Error checking cache: {str(e)}")
-                # Continue with the calculation if cache check fails
+                # Log but continue - cache failures should not stop execution
+                logger.warning(f"Error checking cache: {str(e)}. Proceeding with calculation.")
+                logger.debug(f"Cache check error - traceback: {traceback.format_exc()}")
         
         try:
-            logger.info(f"Starting Monte Carlo simulation {simulation_id} with {request.num_simulations} iterations")
+            logger.info(f"Starting enhanced Monte Carlo simulation {simulation_id} with {request.num_iterations} iterations")
             
-            # Update status to running
-            result.status = SimulationStatus.RUNNING
-            
-            # Generate correlated random variables for all simulations
-            start_time = time.time()
-            variables_matrix = self._generate_correlated_variables(request)
-            
-            # Initialize result arrays
+            # Set up variable tracking
             all_metrics = {}
             all_cashflows = []
             
-            # Run the simulations
-            for i in range(request.num_simulations):
-                # Extract the variables for this simulation
-                simulation_variables = {
-                    var.name: variables_matrix[var.name][i] 
-                    for var in request.variables
-                }
-                
-                # Run the single simulation
-                sim_result = self._run_single_simulation(
-                    request, 
-                    simulation_variables, 
-                    i
-                )
-                
-                # Collect metrics
-                for metric, value in sim_result.metrics.items():
-                    if metric not in all_metrics:
-                        all_metrics[metric] = []
-                    all_metrics[metric].append(value)
-                
-                # Collect cashflows if detailed paths are requested
-                if request.include_detailed_paths and sim_result.cashflows:
-                    all_cashflows.append(sim_result)
-                
-                # Update progress
-                result.num_completed = i + 1
-            
-            # Calculate summary statistics
-            for metric, values in all_metrics.items():
-                # Calculate basic statistics
-                result.summary_statistics[metric] = {
-                    "mean": float(np.mean(values)),
-                    "std_dev": float(np.std(values)),
-                    "min": float(np.min(values)),
-                    "max": float(np.max(values))
-                }
-                
-                # Calculate percentiles
-                result.percentiles[metric] = {
-                    str(p): float(np.percentile(values, p * 100))
-                    for p in request.percentiles
-                }
-            
-            # Update result
-            result.status = SimulationStatus.COMPLETED
-            result.end_time = datetime.now()
-            result.execution_time_seconds = time.time() - start_time
-            
-            # Add detailed paths if requested
-            if request.include_detailed_paths:
-                result.detailed_paths = all_cashflows
-            
-            # Cache the result if enabled (using synchronous Redis client)
-            if use_cache:
+            # Generate correlated random variables for all simulations
+            with CalculationTracker(f"monte_carlo_generate_variables_{simulation_id}"):
                 try:
-                    cache_key = self._generate_cache_key(request, user_id)
-                    result_json = result.json()
-                    ttl = settings.CACHE_TTL_SECONDS or 3600  # Default to 1 hour
-                    self.redis_service.set_sync(cache_key, result_json, ttl=ttl)
+                    variables_matrix = self._generate_correlated_variables(request)
                 except Exception as e:
-                    logger.error(f"Error saving result to cache: {str(e)}")
-                    # Continue even if caching fails
+                    logger.error(f"Error generating correlated variables: {str(e)}")
+                    logger.debug(f"Variables generation error - traceback: {traceback.format_exc()}")
+                    raise ValueError(f"Failed to generate simulation variables: {str(e)}")
             
-            logger.info(f"Completed Monte Carlo simulation {simulation_id} in {result.execution_time_seconds:.2f} seconds")
+            # Run the simulations
+            completed_simulations = 0
+            with CalculationTracker(f"monte_carlo_run_simulations_{simulation_id}"):
+                for i in range(request.num_iterations):
+                    try:
+                        # Extract the variables for this simulation
+                        simulation_variables = {
+                            var.name: variables_matrix[var.name][i] 
+                            for var in request.variables
+                        }
+                        
+                        # Apply economic factors if provided
+                        if hasattr(request, 'economic_factors') and request.economic_factors:
+                            simulation_variables = self.apply_economic_factors(
+                                simulation_variables, 
+                                request.economic_factors
+                            )
+                        
+                        # Run the single simulation
+                        sim_result = self._run_single_simulation(
+                            request, 
+                            simulation_variables, 
+                            i
+                        )
+                        
+                        # Collect metrics
+                        for metric, value in sim_result.metrics.items():
+                            if metric not in all_metrics:
+                                all_metrics[metric] = []
+                            all_metrics[metric].append(value)
+                        
+                        # Collect cashflows if detailed paths are requested
+                        include_cashflows = getattr(request, 'include_detailed_paths', False)
+                        if include_cashflows and hasattr(sim_result, 'cashflows') and sim_result.cashflows:
+                            all_cashflows.append(sim_result.cashflows)
+                        
+                        # Update progress
+                        completed_simulations += 1
+                        
+                        # Call progress callback if provided
+                        if progress_callback:
+                            progress_callback(i + 1, request.num_iterations)
+                            
+                    except Exception as e:
+                        # Log error but continue with other simulations
+                        logger.error(f"Error in simulation iteration {i}: {str(e)}")
+                        logger.debug(f"Simulation iteration error - traceback: {traceback.format_exc()}")
+            
+            # Get total calculation time
+            calculation_time = time.time() - start_time
+            
+            # Generate final result with statistics
+            with CalculationTracker(f"monte_carlo_calculate_statistics_{simulation_id}"):
+                result = self.generate_enhanced_monte_carlo_result(
+                    simulation_id=simulation_id,
+                    num_iterations=request.num_iterations,
+                    time_horizon=getattr(request, 'projection_months', 120),
+                    all_metrics=all_metrics,
+                    all_cashflows=all_cashflows,
+                    calculation_time=calculation_time
+                )
+            
+            # Cache the result if enabled
+            if use_cache and not cache_hit:
+                try:
+                    # Generate cache key
+                    from app.utils.cache_utils import generate_cache_key
+                    cache_key = generate_cache_key(
+                        prefix="monte_carlo_enhanced",
+                        user_id=user_id,
+                        data=request.model_dump() if hasattr(request, 'model_dump') else request
+                    )
+                    
+                    # Cache the result
+                    await self.cache_result(cache_key, result, ttl=cache_ttl)
+                except Exception as e:
+                    logger.warning(f"Error caching result: {str(e)}. Continuing without caching.")
+            
+            logger.info(f"Completed enhanced Monte Carlo simulation {simulation_id} in {calculation_time:.2f} seconds")
             return result
-        
+            
         except Exception as e:
             # Log the error with traceback
-            logger.error(f"Error running Monte Carlo simulation {simulation_id}: {str(e)}")
+            logger.error(f"Error in enhanced Monte Carlo simulation: {str(e)}")
             logger.error(traceback.format_exc())
             
-            # Update result with error information
-            result.status = SimulationStatus.FAILED
-            result.error = str(e)
-            result.end_time = datetime.now()
-            result.execution_time_seconds = time.time() - start_time
+            # Calculate time even for failed simulations
+            calculation_time = time.time() - start_time
             
-            return result
+            # Create error result
+            error_result = MonteCarloResult(
+                simulation_id=simulation_id,
+                num_iterations=getattr(request, 'num_iterations', 0),
+                time_horizon=getattr(request, 'projection_months', 0),
+                calculation_time=calculation_time,
+                npv_stats=StatisticalOutputs(
+                    mean=0.0,
+                    median=0.0,
+                    std_dev=0.0,
+                    min_value=0.0,
+                    max_value=0.0,
+                    percentiles={"50": 0.0}
+                ),
+                error=f"Simulation failed: {str(e)}"
+            )
+            
+            return error_result
+
+    def _generate_cache_key(self, request: Any, user_id: str, scenario_id: str = None) -> str:
+        """
+        Generate a cache key for a simulation request
+        
+        Args:
+            request: The simulation request
+            user_id: ID of the user running the simulation
+            scenario_id: Optional scenario ID if running with a scenario
+            
+        Returns:
+            Cache key string
+        """
+        # Create a dict with all the key elements that make this simulation unique
+        try:
+            key_dict = {
+                "user_id": user_id,
+                "num_simulations": getattr(request, "num_iterations", getattr(request, "num_simulations", 1000)),
+                "asset_class": getattr(request, "asset_class", "generic"),
+                "projection_months": getattr(request, "projection_months", getattr(request, "time_horizon", 120)),
+            }
+            
+            # Add scenario_id if present
+            if scenario_id:
+                key_dict["scenario_id"] = scenario_id
+                
+            # Add any variables if present
+            if hasattr(request, "variables"):
+                if hasattr(request.variables, "model_dump"):
+                    key_dict["variables"] = request.variables.model_dump()
+                elif hasattr(request.variables, "dict"):
+                    key_dict["variables"] = request.variables.dict()
+                else:
+                    key_dict["variables"] = str(request.variables)
+                    
+            # Add economic factors if present
+            if hasattr(request, "economic_factors") and request.economic_factors:
+                if hasattr(request.economic_factors, "model_dump"):
+                    key_dict["economic_factors"] = request.economic_factors.model_dump()
+                elif hasattr(request.economic_factors, "dict"):
+                    key_dict["economic_factors"] = request.economic_factors.dict()
+                else:
+                    key_dict["economic_factors"] = str(request.economic_factors)
+            
+            # Convert to JSON and create a hash
+            key_json = json.dumps(key_dict, sort_keys=True)
+            hash_object = hashlib.md5(key_json.encode())
+            cache_key = f"monte_carlo:{hash_object.hexdigest()}"
+            return cache_key
+        except Exception as e:
+            logger.warning(f"Error generating cache key: {str(e)}. Proceeding without caching.")
+            # Return a fallback key that won't match any existing cache
+            return f"monte_carlo:no_cache_{time.time()}"
