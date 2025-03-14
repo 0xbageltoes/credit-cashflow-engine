@@ -6,6 +6,7 @@ A high-performance Python-based microservice for cash flow forecasting, built wi
 
 - Cash flow forecasting with multiple scenarios
 - Advanced financial analytics using absbox (NPV, IRR, Duration, Convexity)
+- Comprehensive asset class coverage (Residential Mortgages, Auto Loans, Consumer Credit, Commercial Loans, CLOs/CDOs)
 - Scenario management and templating capabilities
 - Risk metrics and sensitivity analysis
 - Supabase JWT authentication
@@ -77,6 +78,15 @@ aws ecs update-service --cluster your-cluster-name --service credit-cashflow-eng
 - GET `/api/v1/forecasts/{forecast_id}` - Get a specific forecast run
 - GET `/api/v1/forecasts/{forecast_id}/projections` - Get projections for a forecast
 
+### Specialized Asset Class Endpoints
+
+- POST `/api/v1/specialized-assets/consumer-credit/analyze` - Analyze consumer credit assets
+- POST `/api/v1/specialized-assets/commercial-loans/analyze` - Analyze commercial loans
+- POST `/api/v1/specialized-assets/clo-cdo/analyze` - Analyze CLO/CDO structured products
+- GET `/api/v1/specialized-assets/consumer-credit/loan-types` - Get consumer credit loan types
+- GET `/api/v1/specialized-assets/commercial-loans/property-types` - Get commercial property types
+- POST `/api/v1/specialized-assets/clo-cdo/tranche-analysis` - Analyze CLO/CDO tranches
+
 ### Scenario Management
 
 - POST `/api/v1/scenarios/` - Create a new scenario
@@ -114,13 +124,34 @@ The engine provides advanced financial analytics using the powerful absbox libra
 - Percentile measurements (5th, 50th, 95th)
 - Volatility metrics and statistical analysis
 
+### Specialized Asset Class Analytics
+
+#### Consumer Credit
+- Delinquency forecasting and roll rate analysis
+- Vintage curve analytics and cohort performance
+- Credit score migration modeling
+- Loss forecasting with economic factor correlations
+
+#### Commercial Loans
+- Property type analysis and concentration risk
+- Debt service coverage ratio (DSCR) stress testing
+- Loan-to-value (LTV) sensitivity analysis
+- Default correlation and recovery rate modeling
+
+#### CLO/CDO Analysis
+- Tranche waterfall modeling and cash flow allocation
+- Overcollateralization and interest coverage tests
+- Collateral quality test simulation
+- Default and recovery simulations at instrument and portfolio level
+
 ## Architecture
 
 The project structure follows domain-driven design principles:
 ```
 app/
 ├── api/           # API routes and endpoints
-│   └── v1/        # API version 1
+│   ├── v1/        # API version 1
+│   └── endpoints/ # Specialized asset class endpoints
 ├── core/          # Core business logic and config
 │   ├── auth.py    # Authentication handling
 │   ├── config.py  # Configuration settings
@@ -128,9 +159,14 @@ app/
 │   └── monitoring.py # Metrics and monitoring
 ├── database/      # Database operations
 ├── models/        # Pydantic models and database schemas
+│   └── specialized_assets.py # Specialized asset class models
 ├── services/      # Business logic services
 │   ├── absbox_service.py  # Financial analytics using absbox
-│   └── redis_service.py   # Caching layer 
+│   ├── redis_service.py   # Caching layer
+│   └── asset_handlers/    # Specialized asset class handlers
+│       ├── consumer_credit.py # Consumer credit analysis
+│       ├── commercial_loan.py # Commercial loan analysis
+│       └── clo_cdo.py     # CLO/CDO analysis
 ├── tasks/         # Celery tasks
 └── utils/         # Utility functions
 ```

@@ -9,6 +9,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.auth import decode_jwt_token
 from app.services.absbox_service_enhanced import AbsBoxServiceEnhanced
+from app.services.asset_handlers.consumer_credit import ConsumerCreditHandler
+from app.services.asset_handlers.commercial_loan import CommercialLoanHandler
+from app.services.asset_handlers.clo_cdo import CLOCDOHandler
 from app.database.supabase import SupabaseClient
 
 # Set up security scheme for JWT
@@ -54,6 +57,36 @@ async def get_absbox_service() -> AbsBoxServiceEnhanced:
     consistent configuration across the application.
     """
     return AbsBoxServiceEnhanced()
+
+async def get_consumer_credit_handler() -> ConsumerCreditHandler:
+    """
+    Dependency to inject the ConsumerCreditHandler
+    
+    Creates and returns a ConsumerCreditHandler instance that's configured
+    with the enhanced AbsBox service.
+    """
+    absbox_service = await get_absbox_service()
+    return ConsumerCreditHandler(absbox_service=absbox_service)
+
+async def get_commercial_loan_handler() -> CommercialLoanHandler:
+    """
+    Dependency to inject the CommercialLoanHandler
+    
+    Creates and returns a CommercialLoanHandler instance that's configured
+    with the enhanced AbsBox service.
+    """
+    absbox_service = await get_absbox_service()
+    return CommercialLoanHandler(absbox_service=absbox_service)
+
+async def get_clo_cdo_handler() -> CLOCDOHandler:
+    """
+    Dependency to inject the CLOCDOHandler
+    
+    Creates and returns a CLOCDOHandler instance that's configured
+    with the enhanced AbsBox service.
+    """
+    absbox_service = await get_absbox_service()
+    return CLOCDOHandler(absbox_service=absbox_service)
 
 async def get_database_client() -> SupabaseClient:
     """
