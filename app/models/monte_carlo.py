@@ -229,3 +229,138 @@ class SavedSimulation(BaseModel):
                 "updated_at": "2023-07-15T12:45:12"
             }
         }
+
+class StatisticalOutputs(BaseModel):
+    """
+    Model for statistical outputs of a Monte Carlo simulation metric
+    
+    Comprehensive statistical summary for a metric from a Monte Carlo simulation.
+    """
+    mean: float
+    median: float
+    std_dev: float
+    min_value: float
+    max_value: float
+    percentiles: Dict[str, float]  # Percentile (as string '10', '50', etc.) -> value
+
+class RiskMetrics(BaseModel):
+    """
+    Model for comprehensive risk metrics from a Monte Carlo simulation
+    
+    Provides a complete set of risk measurements including Value at Risk (VaR),
+    Conditional Value at Risk (CVaR), volatility measures, and performance ratios.
+    """
+    # Value at Risk metrics at different confidence levels (e.g., "0.95": 100000.0)
+    var: Dict[str, float]
+    
+    # Conditional Value at Risk (Expected Shortfall) at different confidence levels
+    cvar: Dict[str, float]
+    
+    # Volatility measures
+    volatility: float
+    downside_deviation: float
+    
+    # Performance ratios
+    sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0
+    
+    # Drawdown measures
+    max_drawdown: float = 0.0
+    
+    # Optional advanced metrics
+    tail_risk: Optional[float] = None
+    stress_loss: Optional[float] = None
+    
+    class Config:
+        """Configuration for the RiskMetrics model"""
+        schema_extra = {
+            "example": {
+                "var": {"0.95": 100000.0, "0.99": 150000.0},
+                "cvar": {"0.95": 120000.0, "0.99": 175000.0},
+                "volatility": 50000.0,
+                "downside_deviation": 45000.0,
+                "sharpe_ratio": 0.8,
+                "sortino_ratio": 0.9,
+                "max_drawdown": 200000.0
+            }
+        }
+
+class MonteCarloResult(BaseModel):
+    """
+    Enhanced result model for a Monte Carlo simulation
+    
+    Comprehensive model for the results of a Monte Carlo simulation
+    with detailed statistics, risk metrics, and visualization data.
+    """
+    # Simulation identification
+    simulation_id: str
+    
+    # Execution information
+    num_iterations: int
+    time_horizon: int
+    calculation_time: float
+    completed_iterations: Optional[int] = None
+    partial_completion: Optional[bool] = False
+    error: Optional[str] = None
+    
+    # NPV statistics
+    npv_stats: StatisticalOutputs
+    
+    # Risk metrics
+    risk_metrics: Optional[RiskMetrics] = None
+    
+    # Additional statistics (optional)
+    irr_stats: Optional[StatisticalOutputs] = None
+    duration_stats: Optional[StatisticalOutputs] = None
+    default_stats: Optional[StatisticalOutputs] = None
+    prepayment_stats: Optional[StatisticalOutputs] = None
+    loss_stats: Optional[StatisticalOutputs] = None
+    
+    # Additional risk metrics (optional)
+    irr_risk_metrics: Optional[RiskMetrics] = None
+    loss_risk_metrics: Optional[RiskMetrics] = None
+    
+    # Loss distribution and capital metrics
+    loss_distribution: Optional[Dict[str, float]] = None
+    expected_loss: Optional[float] = None
+    unexpected_loss: Optional[float] = None
+    economic_capital: Optional[float] = None
+    
+    # Portfolio metrics
+    diversification_benefit: Optional[float] = None
+    correlation_effect: Optional[float] = None
+    
+    # Cashflow projections (optional)
+    best_case_cashflows: Optional[Any] = None
+    worst_case_cashflows: Optional[Any] = None
+    median_case_cashflows: Optional[Any] = None
+    representative_paths: Optional[List[Any]] = None
+    
+    class Config:
+        """Configuration for the MonteCarloResult model"""
+        schema_extra = {
+            "example": {
+                "simulation_id": "abc123-xyz789",
+                "num_iterations": 1000,
+                "time_horizon": 120,
+                "calculation_time": 10.5,
+                "completed_iterations": 1000,
+                "npv_stats": {
+                    "mean": 500000.0,
+                    "median": 520000.0,
+                    "std_dev": 75000.0,
+                    "min_value": 250000.0,
+                    "max_value": 750000.0,
+                    "percentiles": {"10": 400000.0, "50": 520000.0, "90": 600000.0}
+                },
+                "risk_metrics": {
+                    "var": {"0.95": 100000.0},
+                    "cvar": {"0.95": 120000.0},
+                    "volatility": 75000.0,
+                    "downside_deviation": 65000.0,
+                    "sharpe_ratio": 0.85,
+                    "sortino_ratio": 0.95,
+                    "max_drawdown": 150000.0
+                }
+            }
+        }
