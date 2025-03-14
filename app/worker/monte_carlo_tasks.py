@@ -29,6 +29,11 @@ from app.services.monte_carlo_service import MonteCarloSimulationService
 from app.services.supabase_service import SupabaseService
 from app.core.config import settings
 from app.core.monitoring import CalculationTracker
+from app.api.v1.websockets.task_status import (
+    broadcast_simulation_progress,
+    broadcast_simulation_completion,
+    broadcast_simulation_error
+)
 
 # Setup logging
 logger = get_task_logger(__name__)
@@ -36,6 +41,114 @@ logger = get_task_logger(__name__)
 # Initialize services
 monte_carlo_service = MonteCarloSimulationService()
 supabase_service = SupabaseService()
+
+# Create a base Task class with error handling
+class MonteCarloTask:
+    """Base task class with error handling and WebSocket integration"""
+    
+    # Set max retries and retry delay
+    max_retries = 3
+    default_retry_delay = 60  # 1 minute
+    
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Handle task failure"""
+        logger.error(f"Task {task_id} failed: {str(exc)}")
+        logger.error(traceback.format_exc())
+        
+        # Extract simulation_id if available
+        simulation_id = kwargs.get("simulation_id")
+        if not simulation_id and args and len(args) > 1:
+            simulation_id = args[1]
+        
+        if simulation_id:
+            # Update simulation status in database
+            try:
+                # Get the current simulation record
+                simulation = supabase_service.get_item_sync(
+                    table="monte_carlo_simulations",
+                    id=simulation_id
+                )
+                
+                if simulation:
+                    # Update the status
+                    result = simulation.get("result", {})
+                    result["status"] = SimulationStatus.FAILED
+                    result["error"] = str(exc)
+                    result["end_time"] = datetime.now().isoformat()
+                    
+                    # Save the updated simulation
+                    supabase_service.update_item_sync(
+                        table="monte_carlo_simulations",
+                        id=simulation_id,
+                        data={"result": result}
+                    )
+                    
+                    # Broadcast error via WebSocket
+                    self._async_broadcast_error(simulation_id, str(exc))
+            
+            except Exception as e:
+                logger.error(f"Error updating failed simulation {simulation_id}: {str(e)}")
+    
+    def _async_broadcast_progress(self, simulation_id: str, status: str, progress: int, total: int):
+        """Broadcast progress update via WebSocket"""
+        # Create a background task to send the WebSocket update
+        if settings.WEBSOCKET_ENABLED:
+            try:
+                # Make an async HTTP request to the local API endpoint
+                # This allows us to broadcast from a sync context
+                url = f"{settings.INTERNAL_API_BASE_URL}/api/v1/internal/websocket/broadcast-progress"
+                payload = {
+                    "simulation_id": simulation_id,
+                    "status": status,
+                    "progress": progress,
+                    "total": total,
+                    "api_key": settings.INTERNAL_API_KEY
+                }
+                
+                with httpx.Client(timeout=5.0) as client:
+                    client.post(url, json=payload)
+            
+            except Exception as e:
+                logger.error(f"Error broadcasting progress: {str(e)}")
+    
+    def _async_broadcast_completion(self, simulation_id: str, result: Dict[str, Any]):
+        """Broadcast completion via WebSocket"""
+        if settings.WEBSOCKET_ENABLED:
+            try:
+                # Make an async HTTP request to the local API endpoint
+                url = f"{settings.INTERNAL_API_BASE_URL}/api/v1/internal/websocket/broadcast-completion"
+                payload = {
+                    "simulation_id": simulation_id,
+                    "result": {
+                        k: v for k, v in result.items() 
+                        if k in ["status", "execution_time_seconds", "summary_statistics", "percentiles"]
+                    },
+                    "api_key": settings.INTERNAL_API_KEY
+                }
+                
+                with httpx.Client(timeout=5.0) as client:
+                    client.post(url, json=payload)
+            
+            except Exception as e:
+                logger.error(f"Error broadcasting completion: {str(e)}")
+    
+    def _async_broadcast_error(self, simulation_id: str, error: str):
+        """Broadcast error via WebSocket"""
+        if settings.WEBSOCKET_ENABLED:
+            try:
+                # Make an async HTTP request to the local API endpoint
+                url = f"{settings.INTERNAL_API_BASE_URL}/api/v1/internal/websocket/broadcast-error"
+                payload = {
+                    "simulation_id": simulation_id,
+                    "error": error,
+                    "api_key": settings.INTERNAL_API_KEY
+                }
+                
+                with httpx.Client(timeout=5.0) as client:
+                    client.post(url, json=payload)
+            
+            except Exception as e:
+                logger.error(f"Error broadcasting error: {str(e)}")
 
 @task_prerun.connect
 def task_prerun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, **extras):
