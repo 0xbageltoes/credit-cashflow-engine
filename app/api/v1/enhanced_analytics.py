@@ -6,10 +6,13 @@ This module provides endpoints for enhanced analytics using the AbsBox library.
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional, Any
+import logging
 import time
 
 from app.database.supabase import SupabaseClient
 from app.services.absbox_service_enhanced import AbsBoxServiceEnhanced
+from app.core.cache_service import CacheService
+from app.core.error_handling import handle_errors, ServiceError, ApplicationError
 from app.models.cashflow import (
     LoanData, 
     CashflowForecastRequest, 
@@ -30,16 +33,24 @@ from app.models.structured_products import (
     StructuredDealResponse,
     LoanPoolConfig
 )
-from app.api.deps import get_current_user, get_absbox_service, get_database_client
+from app.api.container_deps import (
+    get_current_user,
+    get_absbox_service,
+    get_database_client,
+    get_cache_service
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/enhanced-analytics/", response_model=AnalyticsResponse)
+@handle_errors(logger=logger, default_error=ServiceError)
 async def calculate_enhanced_analytics(
     request: EnhancedAnalyticsRequest,
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service),
-    db: SupabaseClient = Depends(get_database_client)
+    db: SupabaseClient = Depends(get_database_client),
+    cache_service: CacheService = Depends(get_cache_service)
 ):
     """
     Calculate enhanced analytics metrics for a loan using the AbsBox library.
@@ -50,51 +61,45 @@ async def calculate_enhanced_analytics(
     start_time = time.time()
     user_id = current_user["id"]
     
-    try:
-        # First check if we have this result in cache
-        cache_key = f"enhanced_analytics:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.dict()))}"
-        cached_result = absbox_service.get_from_cache(cache_key)
-        
-        if cached_result:
-            execution_time = time.time() - start_time
-            return AnalyticsResponse(
-                status="success",
-                execution_time=execution_time,
-                metrics=cached_result,
-                cache_hit=True
-            )
-            
-        # Use AbsBox to generate enhanced analytics
-        metrics = absbox_service.calculate_enhanced_metrics(request)
-        
-        # Save to database if this is an existing loan
-        if request.loan_id:
-            forecast_id = db.save_enhanced_analytics(user_id, request.loan_id, metrics)
-        
-        # Save to cache
-        absbox_service.save_to_cache(cache_key, metrics)
-        
+    # First check if we have this result in cache
+    cache_key = f"enhanced_analytics:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.model_dump()))}"
+    cached_result = cache_service.get(cache_key)
+    
+    if cached_result:
         execution_time = time.time() - start_time
         return AnalyticsResponse(
             status="success",
             execution_time=execution_time,
-            metrics=metrics,
-            cache_hit=False
+            metrics=cached_result,
+            cache_hit=True
         )
-    except Exception as e:
-        execution_time = time.time() - start_time
-        return AnalyticsResponse(
-            status="error",
-            execution_time=execution_time,
-            error=str(e)
-        )
+        
+    # Use AbsBox to generate enhanced analytics
+    metrics = absbox_service.calculate_enhanced_metrics(request)
+    
+    # Save to database if this is an existing loan
+    if request.loan_id:
+        forecast_id = db.save_enhanced_analytics(user_id, request.loan_id, metrics)
+    
+    # Save to cache
+    cache_service.set(cache_key, metrics)
+    
+    execution_time = time.time() - start_time
+    return AnalyticsResponse(
+        status="success",
+        execution_time=execution_time,
+        metrics=metrics,
+        cache_hit=False
+    )
 
 @router.post("/risk-metrics/", response_model=AnalyticsResponse)
+@handle_errors(logger=logger, default_error=ServiceError)
 async def calculate_risk_metrics(
     request: EnhancedAnalyticsRequest,
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service),
-    db: SupabaseClient = Depends(get_database_client)
+    db: SupabaseClient = Depends(get_database_client),
+    cache_service: CacheService = Depends(get_cache_service)
 ):
     """
     Calculate risk metrics for a loan using the AbsBox library.
@@ -105,46 +110,40 @@ async def calculate_risk_metrics(
     start_time = time.time()
     user_id = current_user["id"]
     
-    try:
-        # First check if we have this result in cache
-        cache_key = f"risk_metrics:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.dict()))}"
-        cached_result = absbox_service.get_from_cache(cache_key)
-        
-        if cached_result:
-            execution_time = time.time() - start_time
-            return AnalyticsResponse(
-                status="success",
-                execution_time=execution_time,
-                metrics=cached_result,
-                cache_hit=True
-            )
-            
-        # Use AbsBox to generate risk metrics
-        risk_metrics = absbox_service.calculate_risk_metrics(request)
-        
-        # Save to cache
-        absbox_service.save_to_cache(cache_key, risk_metrics)
-        
+    # First check if we have this result in cache
+    cache_key = f"risk_metrics:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.model_dump()))}"
+    cached_result = cache_service.get(cache_key)
+    
+    if cached_result:
         execution_time = time.time() - start_time
         return AnalyticsResponse(
             status="success",
             execution_time=execution_time,
-            metrics=risk_metrics,
-            cache_hit=False
+            metrics=cached_result,
+            cache_hit=True
         )
-    except Exception as e:
-        execution_time = time.time() - start_time
-        return AnalyticsResponse(
-            status="error",
-            execution_time=execution_time,
-            error=str(e)
-        )
+        
+    # Use AbsBox to generate risk metrics
+    risk_metrics = absbox_service.calculate_risk_metrics(request)
+    
+    # Save to cache
+    cache_service.set(cache_key, risk_metrics)
+    
+    execution_time = time.time() - start_time
+    return AnalyticsResponse(
+        status="success",
+        execution_time=execution_time,
+        metrics=risk_metrics,
+        cache_hit=False
+    )
 
 @router.post("/sensitivity-analysis/", response_model=AnalyticsResponse)
+@handle_errors(logger=logger, default_error=ServiceError)
 async def calculate_sensitivity(
     request: EnhancedAnalyticsRequest,
     current_user: Dict = Depends(get_current_user),
-    absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service)
+    absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service),
+    cache_service: CacheService = Depends(get_cache_service)
 ):
     """
     Calculate sensitivity analysis for a loan using the AbsBox library.
@@ -155,42 +154,35 @@ async def calculate_sensitivity(
     start_time = time.time()
     user_id = current_user["id"]
     
-    try:
-        # First check if we have this result in cache
-        cache_key = f"sensitivity:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.dict()))}"
-        cached_result = absbox_service.get_from_cache(cache_key)
-        
-        if cached_result:
-            execution_time = time.time() - start_time
-            return AnalyticsResponse(
-                status="success",
-                execution_time=execution_time,
-                metrics=cached_result,
-                cache_hit=True
-            )
-            
-        # Use AbsBox to generate sensitivity analysis
-        sensitivity = absbox_service.calculate_sensitivity(request)
-        
-        # Save to cache
-        absbox_service.save_to_cache(cache_key, sensitivity)
-        
+    # First check if we have this result in cache
+    cache_key = f"sensitivity:{user_id}:{request.loan_id or 'new_loan'}:{hash(str(request.model_dump()))}"
+    cached_result = cache_service.get(cache_key)
+    
+    if cached_result:
         execution_time = time.time() - start_time
         return AnalyticsResponse(
             status="success",
             execution_time=execution_time,
-            metrics=sensitivity,
-            cache_hit=False
+            metrics=cached_result,
+            cache_hit=True
         )
-    except Exception as e:
-        execution_time = time.time() - start_time
-        return AnalyticsResponse(
-            status="error",
-            execution_time=execution_time,
-            error=str(e)
-        )
+        
+    # Use AbsBox to generate sensitivity analysis
+    sensitivity = absbox_service.calculate_sensitivity(request)
+    
+    # Save to cache
+    cache_service.set(cache_key, sensitivity)
+    
+    execution_time = time.time() - start_time
+    return AnalyticsResponse(
+        status="success",
+        execution_time=execution_time,
+        metrics=sensitivity,
+        cache_hit=False
+    )
 
 @router.post("/structured-deal/analyze/", response_model=StructuredDealResponse)
+@handle_errors(logger=logger, default_error=ServiceError)
 async def analyze_structured_deal(
     deal: StructuredDealRequest,
     current_user: Dict = Depends(get_current_user),
@@ -217,6 +209,7 @@ async def analyze_structured_deal(
         raise HTTPException(status_code=500, detail=f"Error analyzing structured deal: {str(e)}")
 
 @router.get("/absbox/health/", response_model=Dict[str, Any])
+@handle_errors(logger=logger, default_error=ServiceError)
 async def check_absbox_health(
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service)
@@ -243,10 +236,12 @@ async def check_absbox_health(
         }
 
 @router.post("/absbox/cache/clear/", response_model=Dict[str, Any])
+@handle_errors(logger=logger, default_error=ServiceError)
 async def clear_absbox_cache(
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service),
-    pattern: Optional[str] = None
+    pattern: Optional[str] = None,
+    cache_service: CacheService = Depends(get_cache_service)
 ):
     """
     Clear the AbsBox service cache.
@@ -261,7 +256,7 @@ async def clear_absbox_cache(
         )
     
     try:
-        cleared_count = absbox_service.clear_cache(pattern)
+        cleared_count = cache_service.clear(pattern)
         return {
             "status": "ok",
             "cleared_keys": cleared_count,
@@ -274,6 +269,7 @@ async def clear_absbox_cache(
         }
 
 @router.get("/absbox/metrics/", response_model=Dict[str, Any])
+@handle_errors(logger=logger, default_error=ServiceError)
 async def get_absbox_metrics(
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service)
@@ -296,6 +292,7 @@ async def get_absbox_metrics(
         }
 
 @router.get("/samples/structured-deal/", response_model=StructuredDealRequest)
+@handle_errors(logger=logger, default_error=ServiceError)
 async def create_sample_deal(
     current_user: Dict = Depends(get_current_user),
     complexity: str = Query("medium", regex="^(simple|medium|complex)$")
@@ -314,11 +311,13 @@ async def create_sample_deal(
         raise HTTPException(status_code=500, detail=f"Error creating sample deal: {str(e)}")
 
 @router.post("/batch-analytics/", response_model=List[AnalyticsResponse])
+@handle_errors(logger=logger, default_error=ServiceError)
 async def batch_analytics(
     requests: List[EnhancedAnalyticsRequest],
     current_user: Dict = Depends(get_current_user),
     absbox_service: AbsBoxServiceEnhanced = Depends(get_absbox_service),
-    db: SupabaseClient = Depends(get_database_client)
+    db: SupabaseClient = Depends(get_database_client),
+    cache_service: CacheService = Depends(get_cache_service)
 ):
     """
     Calculate enhanced analytics for multiple loans in batch.
@@ -333,8 +332,8 @@ async def batch_analytics(
         start_time = time.time()
         try:
             # First check if we have this result in cache
-            cache_key = f"enhanced_analytics:{user_id}:{req.loan_id or 'new_loan'}:{hash(str(req.dict()))}"
-            cached_result = absbox_service.get_from_cache(cache_key)
+            cache_key = f"enhanced_analytics:{user_id}:{req.loan_id or 'new_loan'}:{hash(str(req.model_dump()))}"
+            cached_result = cache_service.get(cache_key)
             
             if cached_result:
                 execution_time = time.time() - start_time
@@ -354,7 +353,7 @@ async def batch_analytics(
                 forecast_id = db.save_enhanced_analytics(user_id, req.loan_id, metrics)
             
             # Save to cache
-            absbox_service.save_to_cache(cache_key, metrics)
+            cache_service.set(cache_key, metrics)
             
             execution_time = time.time() - start_time
             results.append(AnalyticsResponse(

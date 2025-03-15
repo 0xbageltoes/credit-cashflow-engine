@@ -29,7 +29,8 @@ from app.core.metrics import (
     ANALYTICS_CALCULATION_TIME,
     METRICS_ENABLED
 )
-from app.services.redis_service import RedisService
+from app.core.cache_service import CacheService
+from app.core.error_handling import ServiceError, CacheError, handle_errors
 from app.services.unified_absbox_service import UnifiedAbsBoxService
 from app.models.analytics import (
     AnalyticsResult,
@@ -54,7 +55,7 @@ class AnalyticsService:
     def __init__(
         self, 
         absbox_service: UnifiedAbsBoxService,
-        redis: RedisService,
+        cache_service: CacheService,
         cache_ttl: int = settings.CACHE_TTL
     ):
         """
@@ -62,11 +63,11 @@ class AnalyticsService:
         
         Args:
             absbox_service: Client for AbsBox calculations
-            redis: Redis service for caching
+            cache_service: Cache service for result caching
             cache_ttl: Cache time-to-live in seconds
         """
         self.absbox = absbox_service
-        self.redis = redis
+        self.cache_service = cache_service
         self.cache_ttl = cache_ttl
         self.use_cache = settings.USE_REDIS_CACHE
     
@@ -104,6 +105,7 @@ class AnalyticsService:
         
         return f"analytics:{hash_obj.hexdigest()}"
     
+    @handle_errors(logger=logger, default_error=ServiceError)
     def calculate_metrics(
         self,
         cashflows: Union[List[Dict], CashflowProjection],
@@ -137,7 +139,7 @@ class AnalyticsService:
                 
                 # Try to get from cache
                 try:
-                    cached_result = self.redis.get_sync(cache_key)
+                    cached_result = self.cache_service.get(cache_key)
                     if cached_result:
                         logger.info(f"Cache hit for analytics calculation")
                         if METRICS_ENABLED:
@@ -147,7 +149,8 @@ class AnalyticsService:
                         if METRICS_ENABLED:
                             ANALYTICS_CACHE_MISSES.inc()
                 except Exception as e:
-                    logger.warning(f"Error checking cache: {e}")
+                    logger.warning(f"Error checking cache: {e}", exc_info=True)
+                    # Continue with calculation rather than failing
             
             # Parse the cashflows if provided as a list of dicts
             cf_data = cashflows
@@ -191,9 +194,10 @@ class AnalyticsService:
             # Cache the result
             if use_cache and cache_key:
                 try:
-                    self.redis.set_sync(cache_key, result.model_dump(), self.cache_ttl)
+                    self.cache_service.set(cache_key, result.model_dump(), self.cache_ttl)
                 except Exception as e:
-                    logger.warning(f"Error caching result: {e}")
+                    logger.warning(f"Error caching result: {e}", exc_info=True)
+                    # Continue rather than failing due to cache error
             
             # Update metrics
             if METRICS_ENABLED:
@@ -201,15 +205,17 @@ class AnalyticsService:
             
             return result
         except Exception as e:
-            logger.error(f"Error calculating metrics: {e}")
-            logger.debug(f"Error traceback: {traceback.format_exc()}")
-            
-            # Return error result
-            return AnalyticsResult(
-                error=str(e),
-                calculation_time=time.time() - start_time
+            logger.error(f"Error in calculate_metrics: {e}", exc_info=True)
+            raise ServiceError(
+                message="Failed to calculate analytics metrics",
+                context={
+                    "discount_rate": discount_rate,
+                    "has_economic_factors": economic_factors is not None,
+                    "calculation_time": time.time() - start_time
+                },
+                cause=e
             )
-    
+
     async def calculate_metrics_async(
         self,
         cashflows: Union[List[Dict], CashflowProjection],
@@ -243,7 +249,7 @@ class AnalyticsService:
                 
                 # Try to get from cache
                 try:
-                    cached_result = await self.redis.get(cache_key)
+                    cached_result = await self.cache_service.get(cache_key)
                     if cached_result:
                         logger.info(f"Cache hit for analytics calculation")
                         if METRICS_ENABLED:
@@ -253,7 +259,8 @@ class AnalyticsService:
                         if METRICS_ENABLED:
                             ANALYTICS_CACHE_MISSES.inc()
                 except Exception as e:
-                    logger.warning(f"Error checking cache: {e}")
+                    logger.warning(f"Error checking cache: {e}", exc_info=True)
+                    # Continue with calculation rather than failing
             
             # Run calculation in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
@@ -267,19 +274,22 @@ class AnalyticsService:
             # Cache the result
             if use_cache and cache_key:
                 try:
-                    await self.redis.set(cache_key, result.model_dump(), self.cache_ttl)
+                    await self.cache_service.set(cache_key, result.model_dump(), self.cache_ttl)
                 except Exception as e:
-                    logger.warning(f"Error caching result: {e}")
+                    logger.warning(f"Error caching result: {e}", exc_info=True)
+                    # Continue rather than failing due to cache error
             
             return result
         except Exception as e:
-            logger.error(f"Error calculating metrics asynchronously: {e}")
-            logger.debug(f"Error traceback: {traceback.format_exc()}")
-            
-            # Return error result
-            return AnalyticsResult(
-                error=str(e),
-                calculation_time=time.time() - start_time
+            logger.error(f"Error calculating metrics asynchronously: {e}", exc_info=True)
+            raise ServiceError(
+                message="Failed to calculate analytics metrics asynchronously",
+                context={
+                    "discount_rate": discount_rate,
+                    "has_economic_factors": economic_factors is not None,
+                    "calculation_time": time.time() - start_time
+                },
+                cause=e
             )
     
     def _apply_economic_factors(
@@ -504,6 +514,7 @@ class AnalyticsService:
             volatility=volatility
         )
     
+    @handle_errors(logger=logger, default_error=ServiceError)
     def run_sensitivity_analysis(
         self,
         cashflows: Union[List[Dict], CashflowProjection],
@@ -537,7 +548,7 @@ class AnalyticsService:
                 
                 # Try to get from cache
                 try:
-                    cached_result = self.redis.get_sync(cache_key)
+                    cached_result = self.cache_service.get(cache_key)
                     if cached_result:
                         logger.info(f"Cache hit for sensitivity analysis")
                         if METRICS_ENABLED:
@@ -547,7 +558,8 @@ class AnalyticsService:
                         if METRICS_ENABLED:
                             ANALYTICS_CACHE_MISSES.inc()
                 except Exception as e:
-                    logger.warning(f"Error checking cache: {e}")
+                    logger.warning(f"Error checking cache: {e}", exc_info=True)
+                    # Continue with calculation rather than failing
             
             # Parse the cashflows if provided as a list of dicts
             cf_data = cashflows
@@ -601,22 +613,25 @@ class AnalyticsService:
             # Cache the result
             if use_cache and cache_key:
                 try:
-                    self.redis.set_sync(cache_key, sensitivity_result.model_dump(), self.cache_ttl)
+                    self.cache_service.set(cache_key, sensitivity_result.model_dump(), self.cache_ttl)
                 except Exception as e:
-                    logger.warning(f"Error caching result: {e}")
+                    logger.warning(f"Error caching result: {e}", exc_info=True)
+                    # Continue rather than failing due to cache error
             
             return sensitivity_result
         except Exception as e:
-            logger.error(f"Error running sensitivity analysis: {e}")
-            logger.debug(f"Error traceback: {traceback.format_exc()}")
-            
-            return SensitivityAnalysisResult(
-                base_case={},
-                sensitivity_results={},
-                calculation_time=time.time() - start_time,
-                error=f"Error running sensitivity analysis: {str(e)}"
+            logger.error(f"Error running sensitivity analysis: {e}", exc_info=True)
+            raise ServiceError(
+                message="Failed to run sensitivity analysis",
+                context={
+                    "discount_rate": discount_rate,
+                    "parameter_ranges": parameter_ranges,
+                    "calculation_time": time.time() - start_time
+                },
+                cause=e
             )
 
+    @handle_errors(logger=logger, default_error=ServiceError)
     def run_monte_carlo_simulation(
         self,
         cashflows: Union[List[Dict], CashflowProjection],
@@ -650,7 +665,7 @@ class AnalyticsService:
                 
                 # Try to get from cache
                 try:
-                    cached_result = self.redis.get_sync(cache_key)
+                    cached_result = self.cache_service.get(cache_key)
                     if cached_result:
                         logger.info(f"Cache hit for Monte Carlo simulation")
                         if METRICS_ENABLED:
@@ -660,7 +675,8 @@ class AnalyticsService:
                         if METRICS_ENABLED:
                             ANALYTICS_CACHE_MISSES.inc()
                 except Exception as e:
-                    logger.warning(f"Error checking cache: {e}")
+                    logger.warning(f"Error checking cache: {e}", exc_info=True)
+                    # Continue with calculation rather than failing
             
             # Parse the cashflows if provided as a list of dicts
             cf_data = cashflows
@@ -714,18 +730,20 @@ class AnalyticsService:
             # Cache the result
             if use_cache and cache_key:
                 try:
-                    self.redis.set_sync(cache_key, monte_carlo_result.model_dump(), self.cache_ttl)
+                    self.cache_service.set(cache_key, monte_carlo_result.model_dump(), self.cache_ttl)
                 except Exception as e:
-                    logger.warning(f"Error caching result: {e}")
+                    logger.warning(f"Error caching result: {e}", exc_info=True)
+                    # Continue rather than failing due to cache error
             
             return monte_carlo_result
         except Exception as e:
-            logger.error(f"Error running Monte Carlo simulation: {e}")
-            logger.debug(f"Error traceback: {traceback.format_exc()}")
-            
-            return MonteCarloResult(
-                base_case={},
-                simulation_results={},
-                calculation_time=time.time() - start_time,
-                error=f"Error running Monte Carlo simulation: {str(e)}"
+            logger.error(f"Error running Monte Carlo simulation: {e}", exc_info=True)
+            raise ServiceError(
+                message="Failed to run Monte Carlo simulation",
+                context={
+                    "discount_rate": discount_rate,
+                    "parameter_ranges": parameter_ranges,
+                    "calculation_time": time.time() - start_time
+                },
+                cause=e
             )

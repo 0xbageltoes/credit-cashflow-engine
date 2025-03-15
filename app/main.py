@@ -10,6 +10,9 @@ from app.core.middleware import RateLimitMiddleware, RequestTrackingMiddleware
 from app.core.monitoring import PrometheusMiddleware
 from app.core.security import SecurityHeadersMiddleware
 from app.core.error_tracking import init_sentry, setup_logging, log_exception
+from app.core.error_handling import ApplicationError, ServiceError, register_exception_handlers, extract_error_info
+from app.core.dependency_injection import container
+from app.core.service_registry import register_all_services
 from app.core.websocket import manager
 from app.core.config import settings
 from app.tasks.forecasting import generate_forecast, run_stress_test
@@ -19,6 +22,15 @@ import uuid
 # Initialize error tracking and logging
 init_sentry()
 logger = setup_logging()
+
+# Initialize service container
+logger.info("Initializing service container")
+try:
+    register_all_services()
+    logger.info("Service container initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize service container: {str(e)}", exc_info=True)
+    raise
 
 app = FastAPI(
     title="Credit Cashflow Engine",
@@ -52,6 +64,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Include API router - Using the updated router with enhanced analytics endpoints
 app.include_router(api_router, prefix="/api")
 
+# Register the application error handlers
+register_exception_handlers(app)
+
 @app.exception_handler(Exception)
 async def exception_handler(request, exc):
     """Global exception handler with logging and error tracking"""
@@ -61,7 +76,14 @@ async def exception_handler(request, exc):
         "method": request.method,
         "client_ip": request.client.host if request.client else None,
     }
-    log_exception(exc, context)
+    
+    # Convert to ApplicationError for consistent handling if it's not already
+    if not isinstance(exc, ApplicationError) and not isinstance(exc, HTTPException):
+        error_details = extract_error_info(exc)
+        log_exception(exc, context)
+    else:
+        # ApplicationErrors already have context
+        log_exception(exc, context)
     
     # Return appropriate response
     if isinstance(exc, HTTPException):
@@ -75,15 +97,42 @@ async def exception_handler(request, exc):
     
     logger.error(f"Unhandled exception: {exc}")
     return JSONResponse(
-        content=jsonable_encoder({"error": error_message}),
+        content=jsonable_encoder({
+            "error": error_message,
+            "type": exc.__class__.__name__,
+            "timestamp": datetime.now().isoformat()
+        }),
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
     )
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(
-        content=jsonable_encoder({"error": exc.detail}),
+        content=jsonable_encoder({
+            "error": exc.detail,
+            "type": "HTTPException",
+            "status_code": exc.status_code
+        }),
         status_code=exc.status_code
+    )
+
+@app.exception_handler(ApplicationError)
+async def application_error_handler(request, exc: ApplicationError):
+    """Handler for ApplicationError exceptions"""
+    # Already logged in the error handling decorator
+    
+    # Determine status code based on error type
+    status_code = status.HTTP_400_BAD_REQUEST
+    
+    return JSONResponse(
+        status_code=status_code,
+        content=jsonable_encoder({
+            "error": str(exc),
+            "type": exc.__class__.__name__,
+            "timestamp": exc.timestamp,
+            # Only include safe context fields
+            "context": {k: v for k, v in exc.context.items() if k not in ["traceback", "args", "kwargs"]}
+        })
     )
 
 @app.websocket("/ws/{user_id}")

@@ -31,6 +31,7 @@ SUPABASE_JWT_SECRET=your_jwt_secret
 UPSTASH_REDIS_HOST=your_redis_host
 UPSTASH_REDIS_PORT=your_redis_port
 UPSTASH_REDIS_PASSWORD=your_redis_password
+REDIS_CACHE_TTL=3600  # Default TTL in seconds
 ```
 
 2. Install dependencies:
@@ -169,6 +170,68 @@ app/
 │       └── clo_cdo.py     # CLO/CDO analysis
 ├── tasks/         # Celery tasks
 └── utils/         # Utility functions
+```
+
+## Core Components
+
+### Unified Redis Cache Implementation
+
+The credit cashflow engine includes a production-ready unified Redis cache implementation with the following features:
+
+#### Advanced Redis Configuration
+
+- **Comprehensive configuration options**: Connection pooling, timeouts, retry policies, SSL support
+- **Environment-based configuration**: Automatically loads configuration from environment variables
+- **Compression support**: Configurable compression for large objects to reduce memory usage
+- **Advanced key generation**: Consistent key generation based on function arguments
+
+#### CacheService Features
+
+- **Memory caching layer**: In-memory caching for frequently accessed items
+- **Synchronous and asynchronous APIs**: Full support for both sync and async code
+- **Circuit breaker pattern**: Prevents cascading failures when Redis is unavailable
+- **Comprehensive error handling**: Graceful fallbacks and detailed error reporting
+- **Task-specific methods**: Specialized methods for common caching tasks
+- **Serialization flexibility**: Support for various serialization formats and custom serializers
+- **Health checking**: Built-in health check functionality with detailed diagnostics
+- **Cache statistics**: Monitoring of cache hit rates, sizes, and performance metrics
+
+#### Production-Ready Features
+
+- **Prometheus metrics integration**: Track cache performance, hit rates, and error rates
+- **Sentry error reporting**: Detailed error tracking with context
+- **Graceful degradation**: Fall back to direct computation when Redis is unavailable
+- **Compatibility layer**: Support for gradual migration from legacy Redis implementations
+- **Comprehensive logging**: Detailed logging for troubleshooting and monitoring
+
+#### Usage Example
+
+```python
+from app.core.cache_service import CacheService, RedisConfig, cached
+
+# Initialize cache service with custom configuration
+cache = CacheService(RedisConfig(
+    url="redis://localhost:6379/0",
+    default_ttl=3600,
+    default_compression=True,
+    socket_timeout=5.0,
+    socket_connect_timeout=3.0,
+    socket_keepalive=True,
+    retry_on_timeout=True,
+    health_check_interval=30
+))
+
+# Using the @cached decorator with async functions
+@cached(ttl=3600)
+async def fetch_data(id: str, cache: CacheService):
+    # Expensive operation
+    return {"id": id, "data": "expensive result"}
+
+# Using the @cached decorator with sync functions
+@cached(ttl=1800)
+def compute_result(x: int, y: int, cache_service: CacheService):
+    # Expensive operation
+    return x * y
 ```
 
 ## Monitoring and Observability

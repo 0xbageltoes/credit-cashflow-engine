@@ -24,6 +24,12 @@ from app.models.analytics import AnalyticsResult
 from app.core.config import settings
 from app.services.analytics import AnalyticsService
 from app.core.redis_cache import RedisCache
+from app.utils.finance_utils import (
+    calculate_loan_cashflows,
+    calculate_npv_vectorized,
+    calculate_irr_vectorized,
+    calculate_amortization_schedule
+)
 from supabase import create_client, Client
 from app.core.models import LoanRequest
 
@@ -181,6 +187,9 @@ class CashflowService:
         - Balloon payments
         - Economic factor adjustments
         - Enhanced prepayment modeling
+        
+        This method uses the optimized vectorized implementation from finance_utils
+        for significantly improved performance with large datasets.
         """
         # Convert loans to arrays for vectorized operations
         principals = np.array([loan.principal for loan in loans])
@@ -202,69 +211,66 @@ class CashflowService:
                     # Calculate new rate within bounds
                     rates[i] = min(cap, max(floor, market_rate + spread))
         
-        # Initialize arrays
-        max_term = int(np.max(terms))
-        n_loans = len(loans)
+        # Use the optimized vectorized implementation
+        principal_payments, interest_payments, remaining_balance = calculate_loan_cashflows(
+            principals, rates, terms, io_periods, balloon_payments
+        )
         
-        principal_payments = np.zeros((n_loans, max_term))
-        interest_payments = np.zeros((n_loans, max_term))
-        remaining_balance = np.zeros((n_loans, max_term))
+        # Generate period arrays for each loan
         periods = [np.arange(1, term + 1) for term in terms]
         
-        # Calculate monthly payments (excluding balloon)
-        monthly_rates = rates / 12
-        monthly_payments = np.zeros(n_loans)
-        
-        for i in range(n_loans):
-            # Calculate regular monthly payment
-            monthly_payments[i] = abs(npf.pmt(
-                monthly_rates[i],
-                terms[i],
-                principals[i]
-            ))
-        
-        # Calculate amortization schedule for each loan
-        for i in range(n_loans):
-            balance = principals[i]
-            term = int(terms[i])
-            
-            for t in range(term):
-                # Calculate interest portion
-                interest = balance * monthly_rates[i]
-                
-                # Handle interest-only period
-                if t < io_periods[i]:
-                    principal_payment = 0
-                    interest_payment = interest
-                else:
-                    # For regular payments
-                    if t == term - 1:  # Last payment
-                        if balloon_payments[i] > 0:
-                            # Balloon payment
-                            principal_payment = balloon_payments[i]
-                        else:
-                            # Regular final payment - pay off remaining balance
-                            principal_payment = balance
-                        interest_payment = interest
-                    else:
-                        # Regular amortization payment
-                        principal_payment = monthly_payments[i] - interest
-                        interest_payment = interest
-                
-                # Store payments and update balance
-                principal_payments[i, t] = principal_payment
-                interest_payments[i, t] = interest_payment
-                remaining_balance[i, t] = balance
-                
-                # Update balance
-                balance = max(0, balance - principal_payment)
-                
-                # For last payment, ensure balance is exactly zero
-                if t == term - 1:
-                    balance = 0
-                    remaining_balance[i, t] = 0
-        
         return principal_payments, interest_payments, remaining_balance, periods
+
+    def _calculate_npv(
+        self, 
+        cashflows: List[float], 
+        dates: List[datetime], 
+        discount_rate: float
+    ) -> float:
+        """
+        Calculate Net Present Value using vectorized implementation
+        
+        Args:
+            cashflows: List of cashflow amounts
+            dates: List of cashflow dates
+            discount_rate: Annual discount rate
+            
+        Returns:
+            NPV value
+        """
+        # Convert inputs to numpy arrays
+        np_cashflows = np.array(cashflows)
+        np_dates = np.array([np.datetime64(date) for date in dates])
+        
+        # Use vectorized implementation for performance
+        return calculate_npv_vectorized(np_cashflows, np_dates, discount_rate)
+
+    def _calculate_irr(
+        self, 
+        cashflows: List[float], 
+        dates: List[datetime]
+    ) -> float:
+        """
+        Calculate Internal Rate of Return using vectorized implementation
+        
+        Args:
+            cashflows: List of cashflow amounts
+            dates: List of cashflow dates
+            
+        Returns:
+            IRR value
+        """
+        try:
+            # Convert inputs to numpy arrays
+            np_cashflows = np.array(cashflows)
+            np_dates = np.array([np.datetime64(date) for date in dates])
+            
+            # Use vectorized implementation for performance
+            return calculate_irr_vectorized(np_cashflows, np_dates)
+        except (ValueError, ZeroDivisionError) as e:
+            # Handle edge cases where IRR cannot be calculated
+            logger.warning(f"Failed to calculate IRR: {str(e)}")
+            return 0.0
 
     def _calculate_summary_metrics(self, projections: List[CashflowProjection], economic_factors: Optional[Dict] = None) -> Dict:
         """Calculate summary metrics for a list of projections with economic factor adjustments"""
@@ -278,7 +284,11 @@ class CashflowService:
             total_interest += proj.interest
             total_payments += proj.total_payment
         
-        # Calculate NPV using a base discount rate adjusted by economic factors
+        # Extract cashflows and dates for NPV calculation
+        cashflows = [p.total_payment for p in projections]
+        dates = [datetime.strptime(p.date, '%Y-%m-%d') if isinstance(p.date, str) else p.date for p in projections]
+        
+        # Calculate base discount rate adjusted by economic factors
         base_rate = 0.05  # Base annual discount rate
         
         # Apply economic factor adjustments to discount rate
@@ -300,22 +310,27 @@ class CashflowService:
                 risk_premium += abs(gdp_growth) * 2
                 
             # Final discount rate includes market rate and risk adjustments
-            discount_rate = (market_rate + risk_premium) / 12  # Convert to monthly
+            discount_rate = market_rate + risk_premium
         else:
-            discount_rate = base_rate / 12
+            discount_rate = base_rate
         
-        # Calculate NPV with adjusted discount rate
-        npv = 0
-        for i, p in enumerate(projections, 1):
-            # Add current payment discounted to present value
-            discount_factor = (1 + discount_rate) ** i
-            npv += p.total_payment / discount_factor
+        # Calculate NPV with the vectorized implementation for better performance
+        npv = self._calculate_npv(cashflows, dates, discount_rate)
+        
+        # Calculate IRR using vectorized implementation
+        # First cashflow should be negative (investment/loan)
+        if cashflows and len(cashflows) > 1:
+            inv_cashflows = [-cashflows[0]] + cashflows[1:]
+            irr = self._calculate_irr(inv_cashflows, dates)
+        else:
+            irr = 0.0
         
         return {
             "total_principal": float(total_principal),
             "total_interest": float(total_interest),
             "total_payments": float(total_payments),
-            "npv": float(npv)
+            "npv": float(npv),
+            "irr": float(irr)
         }
 
     async def generate_forecast(
