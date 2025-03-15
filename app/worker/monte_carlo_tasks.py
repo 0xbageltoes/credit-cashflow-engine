@@ -601,3 +601,210 @@ def cleanup_expired_simulations(self):
         logger.error(f"Error cleaning up expired simulations: {str(e)}")
         logger.error(traceback.format_exc())
         raise
+
+@shared_task(bind=True, base=MonteCarloTask)
+def run_optimized_monte_carlo_simulation(
+    self,
+    request: Dict,
+    user_id: str,
+    simulation_id: Optional[str] = None,
+    correlation_matrix: Optional[List[List[float]]] = None,
+    use_cache: bool = True
+):
+    """
+    Celery task to run an optimized Monte Carlo simulation
+    
+    This task uses the optimized Monte Carlo simulation implementation with
+    proper correlation modeling and performance optimization.
+    
+    Args:
+        self: Celery task instance
+        request: The simulation request as a dict
+        user_id: ID of the user running the simulation
+        simulation_id: ID for this simulation (optional, will generate if not provided)
+        correlation_matrix: Optional correlation matrix (as list of lists)
+        use_cache: Whether to use caching
+        
+    Returns:
+        Dict with simulation result
+    """
+    import asyncio
+    import numpy as np
+    import uuid
+    from app.services.monte_carlo_optimized import OptimizedMonteCarloService
+    
+    start_time = time.time()
+    
+    # Generate simulation ID if not provided
+    if not simulation_id:
+        simulation_id = f"opt_{user_id}_{str(uuid.uuid4())[:8]}"
+    
+    logger.info(f"Starting optimized Monte Carlo simulation {simulation_id} for user {user_id}")
+    
+    try:
+        # Create service
+        service = OptimizedMonteCarloService()
+        
+        # Extract parameters from request
+        name = request.get("name", "Optimized Simulation")
+        description = request.get("description")
+        loan_data = request.get("loan_data", {})
+        base_economic_factors = request.get("base_economic_factors", {})
+        volatilities = request.get("volatilities")
+        num_scenarios = request.get("num_scenarios", 1000)
+        batch_size = request.get("batch_size")
+        seed = request.get("seed")
+        
+        # Convert correlation matrix to numpy array if provided
+        corr_matrix = None
+        if correlation_matrix:
+            corr_matrix = np.array(correlation_matrix)
+        
+        # Create a status record in the database with initial state
+        initial_result = {
+            "id": simulation_id,
+            "name": name,
+            "description": description,
+            "status": SimulationStatus.RUNNING,
+            "start_time": datetime.now().isoformat(),
+            "num_simulations": num_scenarios,
+            "num_completed": 0
+        }
+        
+        try:
+            # Save initial status to database
+            supabase_service.create_item_sync(
+                table="monte_carlo_simulations",
+                data={
+                    "id": simulation_id,
+                    "user_id": user_id,
+                    "name": name,
+                    "description": description,
+                    "request": request,
+                    "result": initial_result
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error saving initial simulation status: {str(e)}")
+        
+        # Progress tracking function
+        def progress_callback(batch_num, total_batches):
+            if total_batches > 0:
+                progress = min(100, int((batch_num / total_batches) * 100))
+                self._async_broadcast_progress(
+                    simulation_id=simulation_id,
+                    status="running",
+                    progress=progress,
+                    total=100
+                )
+                
+                # Update progress in database
+                try:
+                    supabase_service.update_item_sync(
+                        table="monte_carlo_simulations",
+                        id=simulation_id,
+                        data={
+                            "result": {
+                                **initial_result,
+                                "num_completed": batch_num * batch_size
+                            }
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error updating simulation progress: {str(e)}")
+        
+        # Run the simulation asynchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            result = loop.run_until_complete(
+                service.run_simulation(
+                    loan_data=loan_data,
+                    base_economic_factors=base_economic_factors,
+                    num_scenarios=num_scenarios,
+                    correlation_matrix=corr_matrix,
+                    volatilities=volatilities,
+                    batch_size=batch_size,
+                    seed=seed
+                )
+            )
+        finally:
+            loop.close()
+        
+        # Add metadata to result
+        execution_time = time.time() - start_time
+        full_result = {
+            "id": simulation_id,
+            "name": name,
+            "description": description,
+            "status": SimulationStatus.COMPLETED,
+            "start_time": initial_result["start_time"],
+            "end_time": datetime.now().isoformat(),
+            "execution_time_seconds": execution_time,
+            "num_simulations": num_scenarios,
+            "num_completed": num_scenarios,
+            **result
+        }
+        
+        # Save result to database
+        try:
+            supabase_service.update_item_sync(
+                table="monte_carlo_simulations",
+                id=simulation_id,
+                data={
+                    "result": full_result
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error saving simulation result: {str(e)}")
+        
+        # Broadcast completion via WebSocket
+        self._async_broadcast_completion(
+            simulation_id=simulation_id,
+            result={
+                "status": SimulationStatus.COMPLETED,
+                "execution_time_seconds": execution_time,
+                "summary": result.get("summary", {})
+            }
+        )
+        
+        logger.info(f"Completed optimized Monte Carlo simulation {simulation_id} in {execution_time:.2f} seconds")
+        
+        return {
+            "status": "completed",
+            "message": "Optimized simulation completed successfully",
+            "simulation_id": simulation_id,
+            "execution_time": execution_time,
+            "summary": result.get("summary", {})
+        }
+    
+    except Exception as e:
+        logger.error(f"Error in optimized Monte Carlo simulation {simulation_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Update simulation status in database
+        try:
+            supabase_service.update_item_sync(
+                table="monte_carlo_simulations",
+                id=simulation_id,
+                data={
+                    "result": {
+                        "id": simulation_id,
+                        "status": SimulationStatus.FAILED,
+                        "error": str(e),
+                        "end_time": datetime.now().isoformat()
+                    }
+                }
+            )
+        except Exception as db_error:
+            logger.error(f"Error updating failed simulation status: {str(db_error)}")
+        
+        # Broadcast error via WebSocket
+        self._async_broadcast_error(
+            simulation_id=simulation_id,
+            error=str(e)
+        )
+        
+        # Reraise the exception for Celery to handle
+        raise
