@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Dict, List, Any, Optional, Union
 from datetime import date
+from app.core.cache_service import CacheService
 
 # Import AbsBox libraries
 import absbox as ab
@@ -33,14 +34,16 @@ class ConsumerCreditHandler:
     comprehensive error handling, metrics, and stress testing.
     """
     
-    def __init__(self, absbox_service: Optional[AbsBoxServiceEnhanced] = None):
+    def __init__(self, absbox_service: Optional[AbsBoxServiceEnhanced] = None, cache_service: Optional[CacheService] = None):
         """
         Initialize the consumer credit handler
         
         Args:
             absbox_service: The AbsBox service to use (created if not provided)
+            cache_service: Optional cache service for performance optimization
         """
         self.absbox_service = absbox_service or AbsBoxServiceEnhanced()
+        self.cache_service = cache_service or CacheService()
         logger.info("ConsumerCreditHandler initialized")
     
     def analyze_pool(self, request: AssetPoolAnalysisRequest) -> AssetPoolAnalysisResponse:

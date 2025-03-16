@@ -29,7 +29,7 @@ import absbox as ab
 logger = logging.getLogger(__name__)
 
 from app.core.config import settings
-from app.core.cache import RedisCache
+from app.core.cache_service import CacheService
 from app.core.monitoring import CALCULATION_TIME, CalculationTracker
 from app.models.asset_classes import (
     AssetClass, BaseAsset, AssetPool, 
@@ -44,14 +44,14 @@ from app.services.asset_handlers.factory import AssetHandlerFactory
 class AssetClassService:
     """Service for handling different asset classes in structured finance"""
     
-    def __init__(self, redis_cache: Optional[RedisCache] = None):
+    def __init__(self, cache: Optional[CacheService] = None):
         """
         Initialize the asset class service with production-ready components
         
         Args:
-            redis_cache: Optional Redis cache instance (created if not provided)
+            cache: Optional CacheService instance (created if not provided)
         """
-        self.redis_cache = redis_cache or RedisCache()
+        self.cache = cache or CacheService()
         # Initialize AbsBox service for core functionality
         self.absbox_service = AbsBoxServiceEnhanced()
         
@@ -159,7 +159,7 @@ class AssetClassService:
             Cached AssetPoolAnalysisResponse or None if not found/error
         """
         try:
-            cached_data = await self.redis_cache.get(cache_key)
+            cached_data = await self.cache.get(cache_key)
             if cached_data:
                 logger.debug(f"Cache hit for key: {cache_key}")
                 return AssetPoolAnalysisResponse(**json.loads(cached_data))
@@ -183,7 +183,7 @@ class AssetClassService:
         """
         try:
             serialized_result = json.dumps(result.model_dump())
-            await self.redis_cache.set(cache_key, serialized_result, ttl=ttl)
+            await self.cache.set(cache_key, serialized_result, ttl=ttl)
             logger.debug(f"Cached result under key: {cache_key} with TTL: {ttl}s")
             return True
         except Exception as e:

@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.core.monitoring import CALCULATION_TIME, REQUEST_COUNT
 from app.core.config import settings
 from app.services.absbox_service_enhanced import AbsBoxServiceEnhanced
-from app.core.cache import get_redis_client
+from app.core.cache_service import CacheService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -87,18 +87,18 @@ async def cache_health_check(current_user: Dict = Depends(get_current_user)):
     Tests connection to Redis and reports cache statistics.
     """
     try:
-        redis_client = get_redis_client()
+        cache_service = CacheService()
         
         # Try a basic Redis operation
-        if redis_client is None:
+        if cache_service is None:
             return {
                 "status": "disabled",
                 "message": "Redis cache is not configured"
             }
             
         start_time = time.time()
-        info = redis_client.info()
-        ping_result = redis_client.ping()
+        info = cache_service.info()
+        ping_result = cache_service.ping()
         execution_time = time.time() - start_time
         
         cache_stats = {

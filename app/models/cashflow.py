@@ -217,6 +217,59 @@ class CashflowForecastRequest(BaseModel):
         }
     }
 
+class BatchLoanRequest(BaseModel):
+    """Request model for processing multiple loans in a single batch"""
+    loans: List[LoanData] = Field(
+        ...,
+        min_length=1, 
+        max_length=100,
+        description="List of loans to process in the batch"
+    )
+    process_in_parallel: bool = Field(
+        default=True,
+        description="Whether to process loans in parallel for improved performance"
+    )
+    include_detailed_projections: bool = Field(
+        default=True,
+        description="Whether to include detailed period-by-period projections for each loan"
+    )
+    summary_metrics: bool = Field(
+        default=True,
+        description="Whether to include summary metrics for each loan"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "loans": [
+                    {
+                        "loan_id": "loan-123",
+                        "principal": 200000.0,
+                        "interest_rate": 0.045,
+                        "term_months": 360,
+                        "origination_date": "2023-01-15",
+                        "loan_type": "fixed",
+                        "payment_frequency": "monthly",
+                        "amortization_type": "level_payment"
+                    },
+                    {
+                        "loan_id": "loan-456",
+                        "principal": 150000.0,
+                        "interest_rate": 0.039,
+                        "term_months": 240,
+                        "origination_date": "2023-02-01",
+                        "loan_type": "fixed",
+                        "payment_frequency": "monthly",
+                        "amortization_type": "level_payment"
+                    }
+                ],
+                "process_in_parallel": True,
+                "include_detailed_projections": True,
+                "summary_metrics": True
+            }
+        }
+    }
+
 class BatchForecastRequest(BaseModel):
     """Batch forecast request for multiple loans"""
     forecasts: List[CashflowForecastRequest] = Field(
@@ -235,6 +288,7 @@ class BatchForecastRequest(BaseModel):
         le=50,
         description="Size of parallel processing chunks"
     )
+
     model_config = {
         "json_schema_extra": {
             "example": {
@@ -265,6 +319,62 @@ class MonteCarloResults(BaseModel):
     percentile_5: float
     percentile_95: float
     detailed_results: Optional[List[Dict[str, float]]] = None
+    simulation_time: Optional[float] = None
+    convergence_achieved: Optional[bool] = None
+    value_at_risk: Optional[Dict[str, float]] = None
+    distribution_metrics: Optional[Dict[str, float]] = None
+
+class SensitivityAnalysis(BaseModel):
+    """Sensitivity analysis results for cashflow metrics"""
+    base_case: Dict[str, float] = Field(..., description="Base case metric values")
+    rate_sensitivity: Dict[str, Dict[str, float]] = Field(
+        ..., description="Effect of rate changes on metrics"
+    )
+    default_sensitivity: Dict[str, Dict[str, float]] = Field(
+        ..., description="Effect of default rate changes on metrics"
+    )
+    prepay_sensitivity: Dict[str, Dict[str, float]] = Field(
+        ..., description="Effect of prepayment rate changes on metrics"
+    )
+    recovery_sensitivity: Optional[Dict[str, Dict[str, float]]] = Field(
+        None, description="Effect of recovery rate changes on metrics"
+    )
+    combined_scenarios: Optional[Dict[str, Dict[str, float]]] = Field(
+        None, description="Effect of combined parameter changes"
+    )
+
+class MetricDefinition(BaseModel):
+    """Definition of a financial metric for cashflow analysis"""
+    name: str
+    display_name: str
+    description: str
+    unit: str
+    format_spec: Optional[str] = None
+    category: Optional[str] = None
+
+class CashflowSummaryMetrics(BaseModel):
+    """Summary metrics for a cashflow forecast"""
+    npv: float = Field(..., description="Net Present Value")
+    irr: float = Field(..., description="Internal Rate of Return")
+    yield_to_maturity: float = Field(..., description="Yield to Maturity")
+    duration: float = Field(..., description="Macaulay Duration")
+    modified_duration: float = Field(..., description="Modified Duration")
+    convexity: float = Field(..., description="Convexity")
+    wal: float = Field(..., description="Weighted Average Life")
+    total_principal: float = Field(..., description="Total Principal Payments")
+    total_interest: float = Field(..., description="Total Interest Payments")
+    total_cashflow: float = Field(..., description="Total Cashflow")
+    average_life: float = Field(..., description="Average Life")
+    total_default: Optional[float] = Field(0.0, description="Total Default Amount")
+    total_prepayment: Optional[float] = Field(0.0, description="Total Prepayment Amount")
+    time_to_recovery: Optional[float] = Field(None, description="Expected Time to Recovery")
+    break_even_rate: Optional[float] = Field(None, description="Break-even Interest Rate")
+    effective_duration: Optional[float] = Field(None, description="Effective Duration")
+    key_rate_durations: Optional[Dict[str, float]] = Field(None, description="Key Rate Durations")
+    spread_duration: Optional[float] = Field(None, description="Spread Duration")
+    enterprise_value: Optional[float] = Field(None, description="Enterprise Value")
+    risk_adjusted_return: Optional[float] = Field(None, description="Risk-Adjusted Return on Capital")
+    profitability_index: Optional[float] = Field(None, description="Profitability Index")
 
 class CashflowForecastResponse(BaseModel):
     """Response model for a cashflow forecast with enhanced analytics"""
@@ -272,6 +382,48 @@ class CashflowForecastResponse(BaseModel):
     projections: List[CashflowProjection]
     summary_metrics: Dict[str, Any]
     monte_carlo_results: Optional[MonteCarloResults] = None
+    sensitivity_analysis: Optional[SensitivityAnalysis] = None
+    metrics_definitions: Optional[Dict[str, MetricDefinition]] = None
+    calculation_time: Optional[float] = None
+    calculation_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    request_id: Optional[str] = None
+    version: str = Field(default="1.0.0")
+    warning_messages: Optional[List[str]] = None
+    error_messages: Optional[List[str]] = None
+    
+    @field_validator('projections')
+    def validate_projections(cls, v):
+        """Validate that projections are properly sequenced and balanced"""
+        if not v:
+            return v
+            
+        # Check if periods are sequential
+        periods = [p.period for p in v]
+        if sorted(periods) != periods:
+            raise ValueError("Projection periods must be sequential")
+            
+        # Check if there are duplicate periods
+        if len(periods) != len(set(periods)):
+            raise ValueError("Duplicate period numbers in projections")
+            
+        # Check if final balance is close to zero
+        if v and abs(v[-1].remaining_balance) > 0.01:
+            # Add a warning instead of raising an error
+            if hasattr(cls, 'warning_messages') and cls.warning_messages is not None:
+                cls.warning_messages.append("Final balance is not zero")
+            
+        return v
+    
+    @field_validator('summary_metrics')
+    def validate_summary_metrics(cls, v):
+        """Validate that required summary metrics are present"""
+        required_metrics = ['npv', 'irr', 'wal']
+        missing = [metric for metric in required_metrics if metric.lower() not in {k.lower() for k in v.keys()}]
+        
+        if missing:
+            raise ValueError(f"Missing required metrics: {', '.join(missing)}")
+            
+        return v
 
 class ScenarioSaveRequest(BaseModel):
     """Request model for saving a cashflow scenario"""

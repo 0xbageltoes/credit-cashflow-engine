@@ -1,199 +1,185 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks
-from typing import Dict, List, Optional
-import uuid
-import asyncio
-from app.core.websocket import manager
-from app.models.cashflow import CashflowForecastRequest, BatchForecastRequest
-from app.tasks.forecasting import generate_forecast, run_stress_test
+"""
+Forecasting API Endpoints
+
+This module provides REST API endpoints for forecasting operations
+such as time series predictions, scenario analysis, and what-if modeling.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from typing import Dict, Any, List, Optional
+import logging
+from datetime import datetime, date
+from pydantic import BaseModel, Field
+
 from app.core.auth import get_current_user
-from app.core.redis_cache import RedisCache
 from app.core.logging import logger
+from app.services.forecasting import ForecastingService
+from app.models.forecasting import (
+    ForecastRequest,
+    ScenarioRequest,
+    ForecastingResult,
+    TimeSeriesData,
+    ForecastParameters
+)
 
+# Create router for forecasting endpoints
 router = APIRouter()
-cache = RedisCache()
 
-@router.post("/forecast/async")
-async def create_forecast(
-    request: CashflowForecastRequest,
-    background_tasks: BackgroundTasks,
+class TimeSeriesRequest(BaseModel):
+    """Time series data for forecasting"""
+    series_id: str = Field(..., description="Unique identifier for the time series")
+    series_name: str = Field(..., description="Display name for the time series")
+    data_points: List[Dict[str, Any]] = Field(..., description="Time series data points")
+    parameters: ForecastParameters = Field(..., description="Forecasting parameters")
+    
+class ForecastResponse(BaseModel):
+    """Forecast response model"""
+    forecast_id: str
+    created_at: datetime
+    forecast_data: List[Dict[str, Any]]
+    confidence_intervals: Optional[List[Dict[str, Any]]] = None
+    metadata: Dict[str, Any]
+
+@router.post("/time-series", response_model=ForecastResponse)
+async def forecast_time_series(
+    request: TimeSeriesRequest,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Queue an asynchronous forecast calculation"""
+    """
+    Generate time series forecasts based on historical data
+    
+    This endpoint accepts time series data and forecasting parameters
+    to generate future projections with confidence intervals.
+    """
     try:
-        task = generate_forecast.delay(request.dict(), current_user["id"])
-        cache.set_task_status(task.id, {"status": "PENDING", "user_id": current_user["id"]})
-        background_tasks.add_task(update_task_status, task.id)
-        return {"task_id": task.id}
+        forecasting_service = ForecastingService()
+        result = await forecasting_service.forecast_time_series(
+            series_id=request.series_id,
+            series_name=request.series_name,
+            data_points=request.data_points,
+            parameters=request.parameters,
+            user_id=current_user["id"]
+        )
+        return result
     except Exception as e:
-        logger.error(f"Error creating forecast: {str(e)}", extra={
+        logger.error(f"Error in time series forecasting: {str(e)}", extra={
             "user_id": current_user["id"],
-            "request": request.dict()
+            "series_id": request.series_id,
+            "error": str(e)
         })
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/forecast/batch")
-async def create_batch_forecast(
-    request: BatchForecastRequest,
-    background_tasks: BackgroundTasks,
+@router.post("/scenarios", response_model=List[ForecastResponse])
+async def run_scenarios(
+    request: ScenarioRequest,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Queue multiple forecasts for batch processing"""
+    """
+    Run multiple forecasting scenarios with different parameters
+    
+    This endpoint allows running what-if analyses by varying parameters
+    across multiple scenarios to compare different potential outcomes.
+    """
     try:
-        tasks = []
-        for forecast in request.forecasts:
-            task = generate_forecast.delay(forecast.dict(), current_user["id"])
-            tasks.append(task.id)
-            cache.set_task_status(task.id, {"status": "PENDING", "user_id": current_user["id"]})
-            background_tasks.add_task(update_task_status, task.id)
-        
-        # Store batch task group
-        batch_id = str(uuid.uuid4())
-        cache.set(f"batch:{batch_id}", {
-            "task_ids": tasks,
-            "user_id": current_user["id"],
-            "total": len(tasks),
-            "completed": 0
-        })
-        
-        return {"batch_id": batch_id, "task_ids": tasks}
+        forecasting_service = ForecastingService()
+        results = await forecasting_service.run_scenario_analysis(
+            base_data=request.base_data,
+            scenarios=request.scenarios,
+            user_id=current_user["id"]
+        )
+        return results
     except Exception as e:
-        logger.error(f"Error creating batch forecast: {str(e)}", extra={
+        logger.error(f"Error in scenario forecasting: {str(e)}", extra={
             "user_id": current_user["id"],
-            "request": request.dict()
+            "scenario_count": len(request.scenarios),
+            "error": str(e)
         })
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/forecast/stress-test")
-async def create_stress_test(
-    request: CashflowForecastRequest,
-    scenarios: List[Dict],
-    background_tasks: BackgroundTasks,
+@router.get("/historical/{series_id}", response_model=TimeSeriesData)
+async def get_historical_data(
+    series_id: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Queue a stress test calculation"""
+    """
+    Retrieve historical time series data for analysis
+    
+    This endpoint retrieves stored time series data for a given identifier,
+    optionally filtered by date range.
+    """
     try:
-        task = run_stress_test.delay(request.dict(), current_user["id"], scenarios)
-        cache.set_task_status(task.id, {
-            "status": "PENDING",
-            "user_id": current_user["id"],
-            "scenario_count": len(scenarios)
-        })
-        background_tasks.add_task(update_task_status, task.id)
-        return {"task_id": task.id}
+        forecasting_service = ForecastingService()
+        result = await forecasting_service.get_historical_data(
+            series_id=series_id,
+            start_date=start_date,
+            end_date=end_date,
+            user_id=current_user["id"]
+        )
+        return result
     except Exception as e:
-        logger.error(f"Error creating stress test: {str(e)}", extra={
+        logger.error(f"Error retrieving historical data: {str(e)}", extra={
             "user_id": current_user["id"],
-            "request": request.dict(),
-            "scenarios": len(scenarios)
+            "series_id": series_id,
+            "error": str(e)
         })
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/forecast/{task_id}/status")
-async def get_forecast_status(
-    task_id: str,
+@router.get("/forecasts/{forecast_id}", response_model=ForecastResponse)
+async def get_forecast(
+    forecast_id: str,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Get the status of a forecast calculation"""
+    """
+    Retrieve a previously generated forecast
+    
+    This endpoint retrieves a previously generated forecast by its ID.
+    """
     try:
-        status = cache.get_task_status(task_id)
-        if not status:
-            task = generate_forecast.AsyncResult(task_id)
-            status = {"status": task.status}
-            cache.set_task_status(task_id, status)
-        return status
-    except Exception as e:
-        logger.error(f"Error getting forecast status: {str(e)}", extra={
-            "user_id": current_user["id"],
-            "task_id": task_id
-        })
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/forecast/batch/{batch_id}/status")
-async def get_batch_status(
-    batch_id: str,
-    current_user: Dict = Depends(get_current_user)
-):
-    """Get the status of a batch forecast"""
-    try:
-        batch = cache.get(f"batch:{batch_id}")
-        if not batch:
-            raise HTTPException(status_code=404, detail="Batch not found")
-        
-        if batch["user_id"] != current_user["id"]:
-            raise HTTPException(status_code=403, detail="Not authorized to view this batch")
-        
-        statuses = []
-        completed = 0
-        for task_id in batch["task_ids"]:
-            status = cache.get_task_status(task_id)
-            if status and status["status"] in ["SUCCESS", "FAILURE"]:
-                completed += 1
-            statuses.append({"task_id": task_id, "status": status})
-        
-        # Update completion count
-        batch["completed"] = completed
-        cache.set(f"batch:{batch_id}", batch)
-        
-        return {
-            "total": batch["total"],
-            "completed": completed,
-            "tasks": statuses
-        }
+        forecasting_service = ForecastingService()
+        result = await forecasting_service.get_forecast(
+            forecast_id=forecast_id,
+            user_id=current_user["id"]
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="Forecast not found")
+        return result
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting batch status: {str(e)}", extra={
+        logger.error(f"Error retrieving forecast: {str(e)}", extra={
             "user_id": current_user["id"],
-            "batch_id": batch_id
+            "forecast_id": forecast_id,
+            "error": str(e)
         })
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket endpoint for real-time updates"""
-    connection_id = str(uuid.uuid4())
+@router.delete("/forecasts/{forecast_id}", response_model=Dict[str, bool])
+async def delete_forecast(
+    forecast_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Delete a previously generated forecast
+    
+    This endpoint deletes a previously generated forecast by its ID.
+    """
     try:
-        await manager.connect(websocket, user_id, connection_id)
-        await manager.broadcast_to_user(user_id, {"type": "connection", "status": "connected"})
-        
-        while True:
-            data = await websocket.receive_text()
-            await manager.broadcast_to_user(user_id, {"type": "message", "data": data})
-            
-    except WebSocketDisconnect:
-        manager.disconnect(user_id, connection_id)
-        cache.cleanup_websocket(connection_id)
-        await manager.broadcast_to_user(user_id, {"type": "connection", "status": "disconnected"})
-
-async def update_task_status(task_id: str):
-    """Background task to update task status"""
-    task = generate_forecast.AsyncResult(task_id)
-    status = cache.get_task_status(task_id)
-    
-    if not status:
-        return
-    
-    user_id = status.get("user_id")
-    if not user_id:
-        return
-    
-    while not task.ready():
-        await asyncio.sleep(1)
-    
-    if task.successful():
-        result = task.get()
-        status["status"] = "SUCCESS"
-        status["result"] = result
-    else:
-        status["status"] = "FAILURE"
-        status["error"] = str(task.result)
-    
-    cache.set_task_status(task_id, status)
-    
-    # Send WebSocket update if user is connected
-    if user_id in manager.active_connections:
-        await manager.broadcast_to_user(user_id, {
-            "type": "task_update",
-            "task_id": task_id,
-            "status": status
+        forecasting_service = ForecastingService()
+        result = await forecasting_service.delete_forecast(
+            forecast_id=forecast_id,
+            user_id=current_user["id"]
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="Forecast not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting forecast: {str(e)}", extra={
+            "user_id": current_user["id"],
+            "forecast_id": forecast_id,
+            "error": str(e)
         })
+        raise HTTPException(status_code=500, detail=str(e))

@@ -15,7 +15,7 @@ from app.models.structured_products import (
 )
 from app.core.monitoring import REQUEST_COUNT, CALCULATION_TIME
 from app.api.deps import get_current_user
-from app.core.cache import RedisCache
+from app.core.cache_service import CacheService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

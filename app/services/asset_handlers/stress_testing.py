@@ -17,7 +17,7 @@ from pydantic import ValidationError
 import uuid
 
 from app.core.config import settings
-from app.core.cache import RedisCache, RedisConfig
+from app.core.cache_service import CacheService, RedisConfig
 from app.core.monitoring import CalculationTracker
 from app.core.stress_testing_config import get_stress_test_settings
 from app.models.asset_classes import (
@@ -58,7 +58,7 @@ class AssetStressTester:
         
         # Initialize Redis cache with proper error handling
         try:
-            self.redis_cache = RedisCache(config=redis_config)
+            self.redis_cache = CacheService(config=redis_config)
             logger.info("Initialized Redis cache for stress testing")
         except Exception as e:
             logger.warning(f"Failed to initialize Redis cache, using fallback: {str(e)}")

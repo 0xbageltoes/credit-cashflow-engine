@@ -10,7 +10,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from redis.exceptions import RedisError
 
-from app.core.cache import get_redis_client
+from app.core.cache_service import CacheService
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -41,16 +41,16 @@ class RateLimiter:
         self.time_window = time_window
         self.redis_prefix = redis_prefix
         self.burst_capacity = int(max_requests * burst_multiplier)
-        self._redis_client = None  # Lazy initialization
+        self.cache_service = CacheService()
     
     async def get_redis_client(self):
         """Get Redis client with connection error handling"""
-        if self._redis_client is None:
+        if not hasattr(self, '_redis_client'):
             try:
-                self._redis_client = await get_redis_client()
+                self._redis_client = self.cache_service._redis_async
             except Exception as e:
-                logger.error(f"Failed to initialize Redis client for rate limiter: {str(e)}")
-                return None
+                logger.error(f"Failed to get Redis client: {str(e)}", exc_info=True)
+                raise RedisError(f"Redis connection failed: {str(e)}")
         return self._redis_client
     
     async def check_rate_limit(self, identifier: str) -> bool:

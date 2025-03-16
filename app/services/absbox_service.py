@@ -44,7 +44,7 @@ except ImportError:
     Cashflow = ab.local.Cashflow if hasattr(ab, 'local') and hasattr(ab.local, 'Cashflow') else None
 
 from app.core.config import settings
-from app.core.cache import RedisCache
+from app.core.cache_service import CacheService
 from app.core.monitoring import CALCULATION_TIME, CalculationTracker
 from app.models.structured_products import (
     StructuredDealRequest,
@@ -60,10 +60,10 @@ from app.models.cashflow import CashflowProjection, LoanData, CashflowForecastRe
 class AbsBoxService:
     """Service for structured finance analytics using AbsBox"""
     
-    def __init__(self, hastructure_url: Optional[str] = None, cache: Optional[RedisCache] = None):
+    def __init__(self, hastructure_url: Optional[str] = None, cache: Optional[CacheService] = None):
         """Initialize the AbsBox service"""
         self.hastructure_url = hastructure_url or settings.HASTRUCTURE_URL
-        self.cache = cache or RedisCache()
+        self.cache = cache or CacheService()
         self.engine = self._initialize_engine()
         self.analytics = Analytics()
         logger.info(f"AbsBox service initialized with Hastructure URL: {self.hastructure_url}")

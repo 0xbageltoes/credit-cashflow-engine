@@ -17,6 +17,8 @@ import numpy as np
 # Setup logging
 logger = logging.getLogger(__name__)
 
+from app.core.config import settings
+from app.core.cache_service import CacheService
 from app.core.monitoring import CalculationTracker, CALCULATION_TIME
 from app.models.asset_classes import (
     AssetClass, CommercialLoan, AssetPool,
@@ -33,14 +35,16 @@ class CommercialLoanHandler:
     comprehensive error handling, metrics, and stress testing.
     """
     
-    def __init__(self, absbox_service: Optional[AbsBoxServiceEnhanced] = None):
+    def __init__(self, absbox_service: Optional[AbsBoxServiceEnhanced] = None, cache_service: Optional[CacheService] = None):
         """
         Initialize the commercial loan handler
         
         Args:
             absbox_service: The AbsBox service to use (created if not provided)
+            cache_service: Optional cache service for performance optimization
         """
         self.absbox_service = absbox_service or AbsBoxServiceEnhanced()
+        self.cache_service = cache_service or CacheService()
         logger.info("CommercialLoanHandler initialized")
     
     def analyze_pool(self, request: AssetPoolAnalysisRequest) -> AssetPoolAnalysisResponse:

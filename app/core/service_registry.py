@@ -24,7 +24,7 @@ from app.services.asset_handlers.consumer_credit import ConsumerCreditHandler
 from app.services.asset_handlers.commercial_loan import CommercialLoanHandler
 from app.services.asset_handlers.clo_cdo import CLOCDOHandler
 from app.database.supabase import SupabaseClient
-from app.core.cache_service import CacheService, RedisConfig
+from app.core.cache_service import CacheService
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -219,7 +219,8 @@ def register_asset_handlers() -> None:
     def create_consumer_credit_handler():
         try:
             absbox_service = container.resolve(AbsBoxServiceEnhanced)
-            return ConsumerCreditHandler(absbox_service=absbox_service)
+            cache_service = container.resolve(CacheService)
+            return ConsumerCreditHandler(absbox_service=absbox_service, cache_service=cache_service)
         except Exception as e:
             logger.error(f"Failed to create ConsumerCreditHandler: {str(e)}")
             raise ServiceError(
@@ -233,7 +234,8 @@ def register_asset_handlers() -> None:
     def create_commercial_loan_handler():
         try:
             absbox_service = container.resolve(AbsBoxServiceEnhanced)
-            return CommercialLoanHandler(absbox_service=absbox_service)
+            cache_service = container.resolve(CacheService)
+            return CommercialLoanHandler(absbox_service=absbox_service, cache_service=cache_service)
         except Exception as e:
             logger.error(f"Failed to create CommercialLoanHandler: {str(e)}")
             raise ServiceError(
@@ -247,7 +249,8 @@ def register_asset_handlers() -> None:
     def create_clo_cdo_handler():
         try:
             absbox_service = container.resolve(AbsBoxServiceEnhanced)
-            return CLOCDOHandler(absbox_service=absbox_service)
+            cache_service = container.resolve(CacheService)
+            return CLOCDOHandler(absbox_service=absbox_service, cache_service=cache_service)
         except Exception as e:
             logger.error(f"Failed to create CLOCDOHandler: {str(e)}")
             raise ServiceError(

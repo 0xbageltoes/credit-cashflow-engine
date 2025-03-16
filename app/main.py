@@ -15,6 +15,7 @@ from app.core.dependency_injection import container
 from app.core.service_registry import register_all_services
 from app.core.websocket import manager
 from app.core.config import settings
+from app.core.rate_limiting import limiter, init_rate_limiter
 from app.tasks.forecasting import generate_forecast, run_stress_test
 from app.services.market_data import MarketDataService
 import uuid
@@ -99,10 +100,10 @@ async def exception_handler(request, exc):
     return JSONResponse(
         content=jsonable_encoder({
             "error": error_message,
-            "type": exc.__class__.__name__,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": request.url.path
         }),
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        status_code=500
     )
 
 @app.exception_handler(HTTPException)
@@ -285,3 +286,27 @@ async def metrics():
     
     content = generate_latest()
     return Response(content=content, media_type=CONTENT_TYPE_LATEST)
+
+# Initialize application components that require async initialization
+@app.on_event("startup")
+async def startup_event():
+    """Initialize components during application startup"""
+    try:
+        # Initialize rate limiter
+        logger.info("Initializing rate limiter")
+        await init_rate_limiter()
+        logger.info("Rate limiter initialized successfully")
+        
+        # Initialize other async components here
+        # ...
+        
+        logger.info("Application startup completed successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize components during startup: {str(e)}", exc_info=True)
+        # In production, we don't want to crash the app on startup errors
+        # But we need to log them and ensure graceful degradation
+        if settings.ENVIRONMENT == "production":
+            logger.critical("Application startup error in production environment")
+        else:
+            # In development, we want to fail fast to fix issues
+            raise

@@ -4,11 +4,11 @@ from typing import Dict, List, Optional
 import httpx
 from datetime import datetime, timedelta
 from app.core.config import settings
-from app.core.cache import SQLiteCache, cache_response
+from app.core.cache_service import CacheService, cached
 
 class MarketDataService:
     def __init__(self):
-        self.cache = SQLiteCache()
+        self.cache = CacheService()
         self.fred_api_key = settings.FRED_API_KEY
         self.fred_base_url = "https://api.stlouisfed.org/fred/series/observations"
     
@@ -38,7 +38,7 @@ class MarketDataService:
         
         return yields
 
-    @cache_response(ttl=3600)
+    @cached(ttl=3600)
     async def get_historical_rates(
         self,
         series_id: str,

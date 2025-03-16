@@ -33,6 +33,9 @@ ENV/
 # Environment variables
 .env
 .env.local
+.env.test
+.env.example
+.env.test.example
 
 # Logs
 *.log

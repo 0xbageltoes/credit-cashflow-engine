@@ -22,7 +22,7 @@ from app.api.v1.websockets.task_status import (
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# Create router
+# Create router for internal endpoints
 router = APIRouter()
 
 # Models

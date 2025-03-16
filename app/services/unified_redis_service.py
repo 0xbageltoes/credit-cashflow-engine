@@ -157,18 +157,31 @@ class RedisConfig:
             connection_attempt_delay: Delay between connection attempts in seconds
             namespace: Namespace prefix for all keys
         """
-        # Priority order: URL > Environment > Individual params
+        # Priority order: 
+        # 1. Explicit URL parameter
+        # 2. REDIS_URL environment variable 
+        # 3. Upstash Redis URL
+        # 4. Individual connection parameters (host, port, etc.)
         self.url = url or os.environ.get("REDIS_URL") or None
         
+        # If using Upstash and no URL provided, construct Upstash URL
+        upstash_host = os.environ.get("UPSTASH_REDIS_HOST")
+        upstash_password = os.environ.get("UPSTASH_REDIS_PASSWORD")
+        if not self.url and upstash_host and upstash_password:
+            upstash_port = os.environ.get("UPSTASH_REDIS_PORT", "6379")
+            self.url = f"rediss://default:{upstash_password}@{upstash_host}:{upstash_port}"
+            logger.info("Using Upstash Redis configuration")
+            
         # Only use these if URL is not provided
-        self.host = host or os.environ.get("REDIS_HOST") or "localhost"
-        self.port = port or int(os.environ.get("REDIS_PORT", "6379"))
-        self.password = password or os.environ.get("REDIS_PASSWORD") or None
-        self.username = username or os.environ.get("REDIS_USERNAME") or None
+        self.host = host or os.environ.get("UPSTASH_REDIS_HOST") or os.environ.get("REDIS_HOST") or "localhost"
+        self.port = port or int(os.environ.get("UPSTASH_REDIS_PORT") or os.environ.get("REDIS_PORT", "6379"))
+        self.password = password or os.environ.get("UPSTASH_REDIS_PASSWORD") or os.environ.get("REDIS_PASSWORD") or None
+        self.username = username or os.environ.get("REDIS_USERNAME") or "default"  # Upstash typically uses "default" username
         self.db = int(os.environ.get("REDIS_DB", str(db)))
         
-        # Connection settings
-        self.ssl = ssl or (os.environ.get("REDIS_SSL", "").lower() == "true")
+        # Connection settings - enable SSL by default for Upstash
+        is_upstash = upstash_host is not None or self.url and "upstash.io" in self.url
+        self.ssl = ssl or is_upstash or (os.environ.get("REDIS_SSL", "").lower() == "true")
         self.ssl_cert_reqs = ssl_cert_reqs
         self.socket_timeout = float(os.environ.get("REDIS_SOCKET_TIMEOUT", str(socket_timeout)))
         self.socket_connect_timeout = float(os.environ.get("REDIS_CONNECT_TIMEOUT", str(socket_connect_timeout)))
@@ -209,7 +222,8 @@ class RedisConfig:
             Dictionary of connection parameters
         """
         if self.url:
-            return {
+            # When using URL (including Upstash), these are the critical parameters
+            params = {
                 "url": self.url,
                 "socket_timeout": self.socket_timeout,
                 "socket_connect_timeout": self.socket_connect_timeout,
@@ -220,9 +234,18 @@ class RedisConfig:
                 "max_connections": self.max_connections,
                 "decode_responses": self.decode_responses,
                 "encoding": self.encoding,
-                "encoding_errors": self.encoding_errors,
-                "ssl_cert_reqs": self.ssl_cert_reqs if self.ssl else None
+                "encoding_errors": self.encoding_errors
             }
+            
+            # Set SSL parameters correctly for Upstash
+            if "upstash.io" in self.url or self.url.startswith("rediss://"):
+                params["ssl"] = True
+                # Only set ssl_cert_reqs if explicitly provided, otherwise let redis-py use defaults
+                if self.ssl_cert_reqs is not None:
+                    params["ssl_cert_reqs"] = self.ssl_cert_reqs
+                logger.debug("SSL enabled for Redis connection")
+                
+            return params
         else:
             params = {
                 "host": self.host,
@@ -255,11 +278,9 @@ class RedisConfig:
     
     def __str__(self) -> str:
         """String representation of Redis configuration (sanitized)"""
-        # Create a copy of params without sensitive information
-        params = self.get_connection_params()
-        if "password" in params:
-            params["password"] = "********"
-        return f"RedisConfig({params})"
+        host_info = f"{self.url.split('@')[-1]}" if self.url else f"{self.host}:{self.port}"
+        ssl_info = "with SSL" if self.ssl else "without SSL"
+        return f"RedisConfig({host_info}, {ssl_info})"
 
 
 class RedisSerialization:
@@ -405,42 +426,110 @@ class UnifiedRedisService:
             params = self.config.get_connection_params()
             attempts = 0
             
+            # Log Redis connection details (without sensitive info)
+            host_info = self.config.url.split('@')[-1] if self.config.url else f"{self.config.host}:{self.config.port}"
+            ssl_info = "with SSL" if self.config.ssl else "without SSL"
+            logger.info(f"Initializing Redis connection to {host_info} {ssl_info}")
+            
+            # Determine if we're using Upstash
+            is_upstash = False
+            if self.config.url and ("upstash.io" in self.config.url or self.config.url.startswith("rediss://")):
+                is_upstash = True
+                logger.info("Detected Upstash Redis configuration")
+            
+            connection_error = None
             while attempts < self.config.connection_attempts:
                 try:
                     attempts += 1
                     
                     # Initialize sync client
-                    self._sync_client = Redis(**params)
+                    if self._sync_client is None:
+                        self._sync_client = Redis(**params)
                     
                     # Initialize async client with the same parameters
                     # Force decode_responses=False for the async client to handle binary data properly
-                    async_params = params.copy()
-                    async_params["decode_responses"] = False
-                    self._async_client = AsyncRedis(**async_params)
+                    if self._async_client is None:
+                        async_params = params.copy()
+                        async_params["decode_responses"] = False
+                        self._async_client = AsyncRedis(**async_params)
                     
                     # Test connection
                     if self._sync_client.ping():
                         logger.info(f"Redis clients initialized successfully on attempt {attempts}")
                         self._clients_initialized = True
                         
+                        # Get Redis server info for logging
+                        try:
+                            redis_info = self._sync_client.info()
+                            redis_version = redis_info.get('redis_version', 'unknown')
+                            logger.info(f"Connected to Redis server version: {redis_version}")
+                            
+                            # Check for Upstash-specific info
+                            if is_upstash:
+                                logger.info("Successfully connected to Upstash Redis")
+                        except Exception as e:
+                            logger.warning(f"Could not retrieve Redis server info: {e}")
+                        
                         if METRICS_ENABLED:
                             REDIS_CONNECTIONS.set(1)
                             
                         return
-                except (ConnectionError, TimeoutError) as e:
+                        
+                except (ConnectionError, TimeoutError, ResponseError) as e:
+                    connection_error = e
                     logger.warning(f"Redis connection attempt {attempts} failed: {e}")
                     
                     if attempts < self.config.connection_attempts:
-                        logger.info(f"Retrying in {self.config.connection_attempt_delay} seconds...")
-                        time.sleep(self.config.connection_attempt_delay)
+                        retry_delay = self.config.connection_attempt_delay * (2 ** (attempts - 1))  # Exponential backoff
+                        logger.info(f"Retrying in {retry_delay:.2f} seconds...")
+                        time.sleep(retry_delay)
                     else:
-                        raise
+                        logger.error(f"Failed to connect to Redis after {attempts} attempts")
+                        break
+                except Exception as e:
+                    connection_error = e
+                    logger.error(f"Unexpected error during Redis connection: {e}")
+                    break
             
-            logger.error(f"Failed to connect to Redis after {self.config.connection_attempts} attempts")
+            # If we reach here, all connection attempts failed
+            if connection_error:
+                logger.error(f"Could not connect to Redis: {connection_error}")
+                
+            # Clean up any partial connections
+            self._cleanup_clients()
+            
+            # Set up in-memory fallback
+            logger.warning("Redis connection failed. Using in-memory fallback for caching.")
+            
         except Exception as e:
             logger.error(f"Error initializing Redis clients: {e}")
+            self._cleanup_clients()
+    
+    def _cleanup_clients(self) -> None:
+        """Clean up Redis clients safely"""
+        try:
+            if self._sync_client:
+                try:
+                    self._sync_client.close()
+                except Exception as e:
+                    logger.warning(f"Error closing sync Redis client: {e}")
+                self._sync_client = None
+                
+            if self._async_client:
+                # We can't await here, so we'll just set it to None and let GC handle it
+                self._async_client = None
+                
+            self._clients_initialized = False
+            
+            if METRICS_ENABLED:
+                REDIS_CONNECTIONS.set(0)
+                
+        except Exception as e:
+            logger.error(f"Error during client cleanup: {e}")
+            # Reset to known state
             self._sync_client = None
             self._async_client = None
+            self._clients_initialized = False
     
     def _safe_key(self, key: str) -> str:
         """
@@ -573,12 +662,52 @@ class UnifiedRedisService:
         try:
             logger.info("Attempting to reconnect to Redis...")
             self._initialize_clients()
-            return self.health_check()["connected"]
+            if self._sync_client or self._async_client:
+                return True
+            return False
         except Exception as e:
             logger.error(f"Failed to reconnect to Redis: {e}")
             return False
     
-    # Synchronous Redis methods
+    async def ping(self) -> bool:
+        """
+        Ping Redis to check connectivity
+        
+        Returns:
+            bool: True if Redis is available and responsive, False otherwise
+        """
+        # Check if Redis clients are initialized
+        if not self._async_client:
+            logger.warning("Redis client not initialized, cannot ping")
+            return False
+            
+        try:
+            with self._operation_context("ping"):
+                result = await self._async_client.ping()
+                return result == b"PONG" or result is True
+        except Exception as e:
+            logger.error(f"Error pinging Redis: {e}")
+            return False
+    
+    def ping_sync(self) -> bool:
+        """
+        Ping Redis synchronously to check connectivity
+        
+        Returns:
+            bool: True if Redis is available and responsive, False otherwise
+        """
+        # Check if Redis clients are initialized
+        if not self._sync_client:
+            logger.warning("Redis client not initialized, cannot ping")
+            return False
+            
+        try:
+            with self._operation_context("ping_sync"):
+                result = self._sync_client.ping()
+                return result == b"PONG" or result is True
+        except Exception as e:
+            logger.error(f"Error pinging Redis synchronously: {e}")
+            return False
     
     def get_sync(self, key: str, default: Any = None) -> Any:
         """

@@ -13,6 +13,7 @@ from app.services.asset_handlers.consumer_credit import ConsumerCreditHandler
 from app.services.asset_handlers.commercial_loan import CommercialLoanHandler
 from app.services.asset_handlers.clo_cdo import CLOCDOHandler
 from app.database.supabase import SupabaseClient
+from app.core.cache_service import CacheService
 
 # Set up security scheme for JWT
 security = HTTPBearer()
@@ -96,6 +97,15 @@ async def get_database_client() -> SupabaseClient:
     consistent configuration across the application.
     """
     return SupabaseClient()
+
+async def get_cache_service() -> CacheService:
+    """
+    Returns a CacheService instance for caching operations.
+    
+    Returns:
+        CacheService: A CacheService instance
+    """
+    return CacheService()
 
 async def check_admin_access(current_user: Dict = Depends(get_current_user)) -> Dict:
     """

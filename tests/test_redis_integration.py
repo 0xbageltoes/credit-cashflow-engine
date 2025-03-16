@@ -1,17 +1,16 @@
 import pytest
 import json
 import zlib
-from app.core.redis_cache import RedisCache
-from app.core.cache import RateLimiter, cache_response
+from app.core.cache_service import CacheService, cached
 from app.core.config import settings
 
 @pytest.fixture
 def redis_cache():
-    return RedisCache()
+    return CacheService()
 
 @pytest.fixture
 def rate_limiter():
-    return RateLimiter()
+    return CacheService()
 
 @pytest.mark.asyncio
 class TestRedisIntegration:
@@ -21,17 +20,17 @@ class TestRedisIntegration:
         """Test basic Redis operations (set, get, delete)"""
         # Test set and get
         test_data = {"key": "value", "number": 42}
-        success = await redis_cache.set_async("test_key", test_data)
+        success = await redis_cache.set("test_key", test_data)
         assert success is True
 
-        result = await redis_cache.get_async("test_key")
+        result = await redis_cache.get("test_key")
         assert result == test_data
 
         # Test delete
-        success = await redis_cache.delete_async("test_key")
+        success = await redis_cache.delete("test_key")
         assert success is True
         
-        result = await redis_cache.get_async("test_key")
+        result = await redis_cache.get("test_key")
         assert result is None
 
     async def test_compression(self, redis_cache):
@@ -43,16 +42,16 @@ class TestRedisIntegration:
         }
 
         # Set with compression
-        success = await redis_cache.set_async("large_key", large_data, compress=True)
+        success = await redis_cache.set("large_key", large_data, compress=True)
         assert success is True
 
         # Verify we can retrieve the data
-        result = await redis_cache.get_async("large_key")
+        result = await redis_cache.get("large_key")
         assert result["data"] == "x" * 10000
         assert result["numbers"] == list(range(1000))
         
         # Clean up
-        await redis_cache.delete_async("large_key")
+        await redis_cache.delete("large_key")
 
     async def test_task_status(self, redis_cache):
         """Test task status operations"""
@@ -71,7 +70,7 @@ class TestRedisIntegration:
         assert result == status
         
         # Clean up
-        await redis_cache.delete_async(f"task_status:{task_id}")
+        await redis_cache.delete(f"task_status:{task_id}")
 
     async def test_forecast_results(self, redis_cache):
         """Test forecast result operations"""
@@ -90,7 +89,7 @@ class TestRedisIntegration:
         assert result == forecast_data
         
         # Clean up
-        await redis_cache.delete_async(f"forecast_result:{task_id}")
+        await redis_cache.delete(f"forecast_result:{task_id}")
 
     def test_rate_limiter(self, rate_limiter):
         """Test rate limiting functionality"""
@@ -112,7 +111,7 @@ class TestRedisIntegration:
         """Test cache decorator functionality"""
         call_count = 0
         
-        @cache_response(ttl=10)
+        @cached(ttl=10)
         async def test_function(arg1, arg2):
             nonlocal call_count
             call_count += 1

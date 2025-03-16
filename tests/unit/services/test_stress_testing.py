@@ -6,12 +6,12 @@ import json
 from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 
+from app.core.cache_service import CacheService
 from app.services.asset_handlers.stress_testing import AssetStressTester
 from app.models.asset_classes import (
     AssetClass, AssetPool, AssetPoolAnalysisRequest, AssetPoolAnalysisResponse,
     ResidentialMortgage, AutoLoan, AssetPoolMetrics, AssetPoolStressTest
 )
-from app.core.cache import RedisCache
 
 # Test data fixtures
 @pytest.fixture
@@ -102,25 +102,25 @@ def sample_analysis_response():
     )
 
 @pytest.fixture
-def mock_redis_cache():
-    """Mock Redis cache"""
-    redis_cache = AsyncMock(spec=RedisCache)
-    redis_cache.get = AsyncMock(return_value=None)
-    redis_cache.set = AsyncMock(return_value=True)
-    redis_cache.delete = AsyncMock(return_value=True)
-    return redis_cache
+def mock_cache():
+    """Mock CacheService"""
+    cache = AsyncMock(spec=CacheService)
+    cache.get = AsyncMock(return_value=None)
+    cache.set = AsyncMock(return_value=True)
+    cache.delete = AsyncMock(return_value=True)
+    return cache
 
 class TestAssetStressTester:
     """Tests for the AssetStressTester class"""
     
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_initialization(self, mock_factory, mock_redis_cache):
+    async def test_initialization(self, mock_factory, mock_cache):
         """Test proper initialization of the stress tester"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         
         # Act
         tester = AssetStressTester()
@@ -133,29 +133,29 @@ class TestAssetStressTester:
         assert "credit_crisis" in tester.default_scenarios
         
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_redis_cache_initialization_error(self, mock_factory, mock_redis_cache):
-        """Test handling of Redis cache initialization error"""
+    async def test_cache_initialization_error(self, mock_factory, mock_cache):
+        """Test handling of CacheService initialization error"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.side_effect = Exception("Connection error")
+        mock_cache.side_effect = Exception("Connection error")
         
         # Act
         tester = AssetStressTester()
         
         # Assert
-        assert tester.redis_cache is None  # Should handle error and set redis_cache to None
+        assert tester.cache_service is None  # Should handle error and set cache_service to None
         assert hasattr(tester, 'handler_factory')
         
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_apply_scenario_factors(self, mock_factory, mock_redis_cache):
+    async def test_apply_scenario_factors(self, mock_factory, mock_cache):
         """Test correct application of scenario factors to assets"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         tester = AssetStressTester()
         
         request = sample_analysis_request()
@@ -184,13 +184,13 @@ class TestAssetStressTester:
         assert modified_request.discount_rate == request.discount_rate + market_factors["discount_rate_shock"]
     
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_determine_predominant_asset_class(self, mock_factory, mock_redis_cache):
+    async def test_determine_predominant_asset_class(self, mock_factory, mock_cache):
         """Test correct identification of predominant asset class"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         tester = AssetStressTester()
         
         pool = sample_asset_pool()
@@ -222,13 +222,13 @@ class TestAssetStressTester:
             tester._determine_predominant_asset_class(empty_pool)
     
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_generate_cache_key(self, mock_factory, mock_redis_cache):
+    async def test_generate_cache_key(self, mock_factory, mock_cache):
         """Test cache key generation is deterministic"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         tester = AssetStressTester()
         
         request = sample_analysis_request()
@@ -247,18 +247,18 @@ class TestAssetStressTester:
         assert f"discount_{request.discount_rate}" in key1
         
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_cache_result(self, mock_factory, mock_redis_cache, sample_analysis_response):
+    async def test_cache_result(self, mock_factory, mock_cache, sample_analysis_response):
         """Test proper caching of analysis results"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        cache_mock = AsyncMock(spec=RedisCache)
+        cache_mock = AsyncMock(spec=CacheService)
         cache_mock.set = AsyncMock(return_value=True)
-        mock_redis_cache.return_value = cache_mock
+        mock_cache.return_value = cache_mock
         
         tester = AssetStressTester()
-        tester.redis_cache = cache_mock
+        tester.cache_service = cache_mock
         
         cache_key = "test_cache_key"
         result = sample_analysis_response
@@ -277,25 +277,25 @@ class TestAssetStressTester:
         # Assert
         assert success is False
         
-        # Act - Test with no redis cache
-        tester.redis_cache = None
+        # Act - Test with no cache service
+        tester.cache_service = None
         success = await tester._cache_result(cache_key, result)
         
         # Assert
         assert success is False
     
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_get_cached_result(self, mock_factory, mock_redis_cache, sample_analysis_response):
+    async def test_get_cached_result(self, mock_factory, mock_cache, sample_analysis_response):
         """Test proper retrieval of cached analysis results"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        cache_mock = AsyncMock(spec=RedisCache)
-        mock_redis_cache.return_value = cache_mock
+        cache_mock = AsyncMock(spec=CacheService)
+        mock_cache.return_value = cache_mock
         
         tester = AssetStressTester()
-        tester.redis_cache = cache_mock
+        tester.cache_service = cache_mock
         
         cache_key = "test_cache_key"
         result_json = json.dumps(sample_analysis_response.model_dump())
@@ -326,17 +326,17 @@ class TestAssetStressTester:
         assert cached_result is None
         cache_mock.delete.assert_called_once_with(cache_key)
         
-        # Act - Test with no redis cache
-        tester.redis_cache = None
+        # Act - Test with no cache service
+        tester.cache_service = None
         cached_result = await tester._get_cached_result(cache_key)
         
         # Assert
         assert cached_result is None
 
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_run_scenario_analysis(self, mock_factory, mock_redis_cache, sample_analysis_request, sample_analysis_response):
+    async def test_run_scenario_analysis(self, mock_factory, mock_cache, sample_analysis_request, sample_analysis_response):
         """Test running scenario analysis with proper handler selection"""
         # Arrange
         handler_mock = AsyncMock()
@@ -347,7 +347,7 @@ class TestAssetStressTester:
         factory_mock.get_handler = MagicMock(return_value=handler_mock)
         
         mock_factory.return_value = factory_mock
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         
         tester = AssetStressTester()
         tester.handler_factory = factory_mock
@@ -378,9 +378,9 @@ class TestAssetStressTester:
         assert "Analysis error" in result.error
     
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_run_stress_tests(self, mock_factory, mock_redis_cache, sample_analysis_request, sample_analysis_response):
+    async def test_run_stress_tests(self, mock_factory, mock_cache, sample_analysis_request, sample_analysis_response):
         """Test running a full set of stress tests"""
         # Arrange
         handler_mock = AsyncMock()
@@ -390,16 +390,16 @@ class TestAssetStressTester:
         factory_mock.is_supported = MagicMock(return_value=True)
         factory_mock.get_handler = MagicMock(return_value=handler_mock)
         
-        cache_mock = AsyncMock(spec=RedisCache)
+        cache_mock = AsyncMock(spec=CacheService)
         cache_mock.get = AsyncMock(return_value=None)
         cache_mock.set = AsyncMock(return_value=True)
         
         mock_factory.return_value = factory_mock
-        mock_redis_cache.return_value = cache_mock
+        mock_cache.return_value = cache_mock
         
         tester = AssetStressTester()
         tester.handler_factory = factory_mock
-        tester.redis_cache = cache_mock
+        tester.cache_service = cache_mock
         
         # Mock method to simplify test
         original_run_scenario = tester._run_scenario_analysis
@@ -462,13 +462,13 @@ class TestAssetStressTester:
         tester._run_scenario_analysis = original_run_scenario
 
     @pytest.mark.asyncio
-    @patch('app.services.asset_handlers.stress_testing.RedisCache')
+    @patch('app.services.asset_handlers.stress_testing.CacheService')
     @patch('app.services.asset_handlers.stress_testing.AssetHandlerFactory')
-    async def test_generate_stress_test_report(self, mock_factory, mock_redis_cache, sample_analysis_response):
+    async def test_generate_stress_test_report(self, mock_factory, mock_cache, sample_analysis_response):
         """Test generation of comprehensive stress test report"""
         # Arrange
         mock_factory.return_value = MagicMock()
-        mock_redis_cache.return_value = AsyncMock()
+        mock_cache.return_value = AsyncMock()
         
         tester = AssetStressTester()
         
