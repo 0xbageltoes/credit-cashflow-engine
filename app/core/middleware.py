@@ -31,13 +31,41 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app: ASGIApp):
         super().__init__(app)
-        # Use Redis or in-memory cache for rate limiting
+        # Use Redis or in-memory cache for rate limiting with safe fallbacks
         self.cache_service = CacheService()
-        self.max_requests = settings.RATE_LIMIT_REQUESTS
-        self.time_window = settings.RATE_LIMIT_WINDOW
+        
+        # Get rate limit settings with safe defaults for production
+        self.max_requests = int(getattr(settings, "RATE_LIMIT_REQUESTS", 1000))
+        
+        # Check for either RATE_LIMIT_WINDOW or RATE_LIMIT_PERIOD with safe default
+        # Ensure we always have an integer value for time window
+        time_window_value = getattr(settings, "RATE_LIMIT_PERIOD", 
+                           getattr(settings, "RATE_LIMIT_WINDOW", 60))
+        
+        # Handle string time units like "hour", "minute", "day", "second"
+        if isinstance(time_window_value, str):
+            time_window_value = time_window_value.lower().strip()
+            if time_window_value == "second":
+                self.time_window = 1
+            elif time_window_value == "minute":
+                self.time_window = 60
+            elif time_window_value == "hour":
+                self.time_window = 3600
+            elif time_window_value == "day":
+                self.time_window = 86400
+            elif time_window_value.isdigit():
+                self.time_window = int(time_window_value)
+            else:
+                logger.warning(f"Invalid time window value: {time_window_value}, using default of 60 seconds")
+                self.time_window = 60
+        else:
+            # If it's already a number, convert it directly
+            self.time_window = int(time_window_value)
         
         # Initialize the custom rate limiter during middleware initialization
-        logger.info("Initializing rate limiter middleware")
+        env = getattr(settings, "ENVIRONMENT", "development")
+        logger.info(f"Rate limiter initialized for environment: {env}")
+        logger.info(f"Default rate limit set to: {self.max_requests}/{self.time_window}seconds")
         
         # List of paths to exclude from rate limiting
         self.excluded_paths = [

@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
 from app.api.v1.cashflow import router as cashflow_router
 from app.api.v1.health import router as health_router
 from app.api.v1.structured_products import router as structured_products_router
+from app.api.endpoints.deal_library import router as deal_library_router
 
 # Create main API router
 api_router = APIRouter()
@@ -68,4 +69,11 @@ api_router.include_router(
     structured_products_router,
     prefix="/structured",
     tags=["structured products"]
+)
+
+# Include deal library router
+api_router.include_router(
+    deal_library_router,
+    prefix="/deals",
+    tags=["deal library"]
 )

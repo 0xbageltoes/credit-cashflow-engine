@@ -144,3 +144,196 @@ class StructuredDealResponse(BaseModel):
     status: str
     error: Optional[str] = None
     error_type: Optional[str] = None
+
+# Enhanced models for the AbsBoxServiceEnhanced class
+class LoanData(BaseModel):
+    """Detailed loan data model with additional metadata"""
+    loan_id: str
+    original_balance: float
+    current_balance: float
+    interest_rate: float
+    original_term: int
+    remaining_term: int
+    payment_frequency: str
+    origination_date: date
+    maturity_date: date
+    status: str = Field(default="current")
+    delinquency_status: Optional[str] = None
+    days_delinquent: Optional[int] = None
+    default_date: Optional[date] = None
+    prepayment_date: Optional[date] = None
+    recovery_amount: Optional[float] = None
+    recovery_date: Optional[date] = None
+    last_payment_date: Optional[date] = None
+    next_payment_date: Optional[date] = None
+    payment_amount: Optional[float] = None
+    property_type: Optional[str] = None
+    property_value: Optional[float] = None
+    ltv_ratio: Optional[float] = None
+    dti_ratio: Optional[float] = None
+    fico_score: Optional[int] = None
+    geography: Optional[str] = None
+    industry: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "loan_id": "L12345",
+                "original_balance": 250000.0,
+                "current_balance": 240000.0,
+                "interest_rate": 0.045,
+                "original_term": 360,
+                "remaining_term": 350,
+                "payment_frequency": "Monthly",
+                "origination_date": "2023-01-15",
+                "maturity_date": "2053-01-15",
+                "status": "current",
+                "payment_amount": 1267.85,
+                "ltv_ratio": 0.8,
+                "fico_score": 720
+            }
+        }
+
+class CashflowPeriod(BaseModel):
+    """Single period in a cashflow projection"""
+    period: int
+    date: date
+    beginning_balance: float
+    payment: float
+    interest: float
+    principal: float
+    prepayment: float
+    default: float
+    recovery: float
+    ending_balance: float
+    scheduled_payment: Optional[float] = None
+    scheduled_interest: Optional[float] = None
+    scheduled_principal: Optional[float] = None
+    delinquent_amount: Optional[float] = None
+    additional_metrics: Optional[Dict[str, Any]] = None
+
+class CashflowProjection(BaseModel):
+    """Cashflow projection model for loan or bond"""
+    name: str
+    cashflow_type: str  # "loan", "bond", "pool", etc.
+    periods: List[CashflowPeriod]
+    start_date: date
+    end_date: date
+    original_balance: float
+    current_balance: float
+    interest_rate: float
+    term: int
+    remaining_term: int
+    cdr: Optional[float] = None  # Conditional Default Rate
+    cpr: Optional[float] = None  # Conditional Prepayment Rate
+    severity: Optional[float] = None  # Loss Severity
+    total_interest: Optional[float] = None
+    total_principal: Optional[float] = None
+    total_prepayment: Optional[float] = None
+    total_default: Optional[float] = None
+    total_recovery: Optional[float] = None
+    net_cashflow: Optional[float] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "name": "Pool_A",
+                "cashflow_type": "pool",
+                "start_date": "2023-01-15",
+                "end_date": "2053-01-15",
+                "original_balance": 10000000.0,
+                "current_balance": 9850000.0,
+                "interest_rate": 0.045,
+                "term": 360,
+                "remaining_term": 350,
+                "cdr": 0.01,
+                "cpr": 0.05,
+                "severity": 0.35,
+                "total_interest": 5457825.87,
+                "total_principal": 9850000.0,
+                "net_cashflow": 15307825.87
+            }
+        }
+
+class EnhancedAnalyticsResult(BaseModel):
+    """Enhanced analytics result with detailed metrics"""
+    scenario_name: str
+    run_date: datetime = Field(default_factory=datetime.now)
+    bond_metrics: Dict[str, Dict[str, Any]]
+    pool_metrics: Dict[str, Any]
+    waterfall_metrics: Dict[str, Any]
+    sensitivity_analysis: Optional[Dict[str, Any]] = None
+    stress_tests: Optional[Dict[str, Any]] = None
+    execution_time: float
+    status: str
+    calculation_warnings: Optional[List[str]] = None
+    error: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "scenario_name": "Base Case",
+                "run_date": "2023-06-15T14:30:25",
+                "bond_metrics": {
+                    "Class A": {
+                        "yield": 0.042,
+                        "duration": 5.2,
+                        "wac": 0.045,
+                        "wal": 6.1,
+                        "price": 99.5
+                    }
+                },
+                "pool_metrics": {
+                    "wac": 0.045,
+                    "wal": 8.2,
+                    "cpr": 0.05,
+                    "cdr": 0.01
+                },
+                "execution_time": 0.45,
+                "status": "success"
+            }
+        }
+
+class CashflowForecastResponse(BaseModel):
+    """Enhanced response model for cashflow forecasts with multiple projections"""
+    deal_name: str
+    run_date: datetime = Field(default_factory=datetime.now)
+    pool_cashflows: CashflowProjection
+    bond_cashflows: Dict[str, CashflowProjection]
+    waterfall_results: Dict[str, List[Dict[str, Any]]]
+    scenario_parameters: Dict[str, Any]
+    metrics: Dict[str, Any]
+    execution_time: float
+    engine_version: str
+    status: str
+    cache_hit: Optional[bool] = None
+    warnings: Optional[List[str]] = None
+    error: Optional[str] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "deal_name": "Example RMBS 2023-1",
+                "run_date": "2023-06-15T14:30:25",
+                "scenario_parameters": {
+                    "cpr": 0.05,
+                    "cdr": 0.01,
+                    "severity": 0.35
+                },
+                "metrics": {
+                    "bond_yields": {
+                        "Class A": 0.042,
+                        "Class B": 0.052
+                    },
+                    "pool_metrics": {
+                        "wac": 0.045,
+                        "wal": 8.2
+                    }
+                },
+                "execution_time": 0.75,
+                "engine_version": "1.0.3",
+                "status": "success"
+            }
+        }

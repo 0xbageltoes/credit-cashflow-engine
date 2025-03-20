@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     WORKERS: int = int(os.getenv("WORKERS", "1"))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     
+    # Rate limiting settings
+    RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+    RATE_LIMIT_PERIOD: str = os.getenv("RATE_LIMIT_PERIOD", "hour")
+    
     # Supabase settings
     SUPABASE_URL: str
     SUPABASE_KEY: str = ""  # Alias for SUPABASE_ANON_KEY for backward compatibility
@@ -49,65 +53,84 @@ class Settings(BaseSettings):
     INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "development_internal_key")
     INTERNAL_API_BASE_URL: str = os.getenv("INTERNAL_API_BASE_URL", "http://localhost:8000")
     
-    # Upstash Redis settings
-    UPSTASH_REDIS_HOST: str
-    UPSTASH_REDIS_PORT: str
-    UPSTASH_REDIS_PASSWORD: str
-    
-    # Redis specific configuration
-    REDIS_CONFIG: RedisConfig = RedisConfig()
+    # Redis settings
     REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD") 
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_SSL: bool = os.getenv("REDIS_SSL", "false").lower() == "true"
+    REDIS_URL: Optional[str] = os.getenv("REDIS_URL")
     
-    # CORS settings
-    CORS_ORIGINS: List[str] = ["*"]
-    CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: List[str] = ["*"]
-    CORS_ALLOW_HEADERS: List[str] = ["*"]
+    # Always prioritize Upstash Redis credentials if available
+    UPSTASH_REDIS_HOST: Optional[str] = os.getenv("UPSTASH_REDIS_HOST")
+    UPSTASH_REDIS_PORT: str = os.getenv("UPSTASH_REDIS_PORT", "6379")
+    UPSTASH_REDIS_PASSWORD: Optional[str] = os.getenv("UPSTASH_REDIS_PASSWORD")
     
-    # Monitoring and Logging
-    SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")
-    PROMETHEUS_ENABLED: bool = True
-    LOGGING_JSON_FORMAT: bool = True
+    # Safe getter for settings to avoid AttributeError
+    def get(self, name, default=None):
+        """
+        Safely get a setting with a default value if it doesn't exist.
+        This prevents AttributeError exceptions in production.
+        
+        Args:
+            name: Name of the setting to get
+            default: Default value if setting doesn't exist
+            
+        Returns:
+            Setting value or default
+        """
+        return getattr(self, name, default)
     
-    # Security settings
-    HASH_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    ACCESS_TOKEN_EXPIRE_SECONDS: int = ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
-    JWT_TOKEN_PREFIX: str = "Bearer"
-    SSL_VERIFICATION: bool = True if ENVIRONMENT == "production" else False
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "development_secret_key")
+    # Make settings safely accessible with dict-like syntax
+    def __getitem__(self, name):
+        """
+        Allow dict-like access to settings with safe defaults.
+        
+        Args:
+            name: Setting name to access
+            
+        Returns:
+            Setting value or None if not found
+        """
+        return self.get(name)
     
-    # JWT Audience and Issuer settings
-    JWT_AUDIENCE: Optional[str] = os.getenv("JWT_AUDIENCE")
-    JWT_ISSUER: Optional[str] = os.getenv("JWT_ISSUER")
-    JWT_TOKEN_LOCATION: List[str] = ["headers", "cookies"]
-    
-    # Performance settings
-    RATE_LIMIT_REQUESTS: int = 100  # Number of requests
-    RATE_LIMIT_WINDOW: int = 3600   # Time window in seconds (1 hour)
-    CACHE_TTL: int = 3600  # Cache time-to-live in seconds
-    BATCH_SIZE: int = 1000  # Size of batch operations for database
-    CALCULATION_THREAD_POOL_SIZE: int = int(os.getenv("CALCULATION_THREAD_POOL_SIZE", "4"))
-    
-    # Task queue settings
-    CELERY_TASK_ALWAYS_EAGER: bool = False if ENVIRONMENT == "production" else True
-    CELERY_WORKER_CONCURRENCY: int = int(os.getenv("CELERY_CONCURRENCY", "4"))
-    CELERY_TASK_TIME_LIMIT: int = 1800  # 30 minutes
-    CELERY_TASK_MAX_RETRIES: int = 3
-    
-    # Hastructure Engine Settings
-    HASTRUCTURE_URL: Optional[str] = os.getenv("HASTRUCTURE_URL", "http://hastructure:8081")
-    HASTRUCTURE_TIMEOUT: int = int(os.getenv("HASTRUCTURE_TIMEOUT", "300"))
-    HASTRUCTURE_MAX_POOL_SIZE: int = int(os.getenv("HASTRUCTURE_MAX_POOL_SIZE", "10"))
-    
-    # Market Data API settings
-    FRED_API_KEY: Optional[str] = None
-    BLOOMBERG_API_KEY: Optional[str] = None
-    
-    # AWS settings (for production)
-    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
-    AWS_S3_BUCKET: Optional[str] = os.getenv("AWS_S3_BUCKET")
+    @property
+    def REDIS_CONFIG(self) -> RedisConfig:
+        """Get Redis configuration with proper prioritization of Upstash"""
+        # Create base Redis config
+        config = RedisConfig(
+            HOST=self.REDIS_HOST,
+            PORT=self.REDIS_PORT,
+            PASSWORD=self.REDIS_PASSWORD,
+            DB=self.REDIS_DB,
+            SSL=self.REDIS_SSL,
+            SSL_CERT_REQS=self.REDIS_SSL_CERT_REQS,
+            ENABLED=self.REDIS_ENABLED
+        )
+        
+        # ALWAYS prioritize Upstash Redis if available, regardless of environment
+        upstash_host = os.environ.get("UPSTASH_REDIS_HOST")
+        upstash_port = os.environ.get("UPSTASH_REDIS_PORT", "6379")
+        upstash_password = os.environ.get("UPSTASH_REDIS_PASSWORD")
+        
+        # If Upstash environment variables are available, use them
+        if upstash_host and upstash_password:
+            print(f"Using Upstash Redis at {upstash_host}:{upstash_port}")
+            config.HOST = upstash_host
+            config.PORT = int(upstash_port)
+            config.PASSWORD = upstash_password
+            config.SSL = True
+            config.SSL_CERT_REQS = "required"
+            
+            # Set Redis URL for Upstash
+            config.REDIS_URL = f"rediss://default:{upstash_password}@{upstash_host}:{upstash_port}"
+        else:
+            # Log warning if Upstash credentials are missing in production
+            if self.ENVIRONMENT.lower() in ["prod", "production"]:
+                print("WARNING: Production environment detected but Upstash Redis credentials are missing!")
+        
+        return config
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

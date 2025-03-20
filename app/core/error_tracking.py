@@ -21,13 +21,26 @@ def init_sentry():
     if settings.ENVIRONMENT == "test" or not SENTRY_AVAILABLE:
         logging.info("Skipping Sentry initialization in test environment or Sentry SDK not available")
         return
+    
+    # Check if SENTRY_DSN exists in settings using getattr with a default value
+    sentry_dsn = getattr(settings, "SENTRY_DSN", None)
+    if not sentry_dsn:
+        logging.info("No SENTRY_DSN configured, error tracking disabled")
+        return
         
-    if settings.SENTRY_DSN and settings.SENTRY_DSN != "https://your-key@sentry.io/your-project-id":
+    if sentry_dsn != "https://your-key@sentry.io/your-project-id":
+        # Get additional settings with safe defaults for production
+        environment = getattr(settings, "ENVIRONMENT", "production")
+        version = getattr(settings, "VERSION", "0.1.0")
+        traces_sample_rate = getattr(settings, "SENTRY_TRACES_SAMPLE_RATE", 0.2)
+        
+        logging.info(f"Initializing Sentry error tracking for environment: {environment}")
+        
         sentry_sdk.init(
-            dsn=settings.SENTRY_DSN,
-            environment=settings.ENVIRONMENT,
-            release=settings.VERSION,
-            traces_sample_rate=0.2,
+            dsn=sentry_dsn,
+            environment=environment,
+            release=version,
+            traces_sample_rate=traces_sample_rate,
             integrations=[
                 FastApiIntegration(),
                 RedisIntegration(),
@@ -122,7 +135,7 @@ def log_exception(exc, context=None):
     logger.error(f"Exception occurred: {exc}", extra=error_details)
     
     # Capture exception with Sentry
-    if settings.SENTRY_DSN and SENTRY_AVAILABLE:
+    if getattr(settings, "SENTRY_DSN", None) and SENTRY_AVAILABLE:
         with sentry_sdk.push_scope() as scope:
             if context:
                 for key, value in context.items():

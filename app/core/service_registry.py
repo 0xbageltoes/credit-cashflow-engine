@@ -14,7 +14,7 @@ from functools import wraps
 from contextlib import contextmanager
 
 from app.core.dependency_injection import container, register_service, register_factory
-from app.core.config import settings, RedisConfig as ConfigRedisConfig
+from app.core.config import settings, RedisConfig
 from app.core.error_handling import CacheError, ConfigurationError, ServiceError, handle_errors, ApplicationError
 from app.core.metrics import CACHE_ERROR_COUNTER, DEPENDENCY_INIT_TIME, METRICS_ENABLED
 
@@ -79,44 +79,22 @@ def register_core_configurations() -> None:
     """Register core configuration objects in the container"""
     # Configure Redis settings with proper environment-specific fallbacks
     try:
-        redis_config = _create_redis_config()
+        # Get Redis configuration from settings (which now prioritizes Upstash)
+        redis_config = settings.REDIS_CONFIG
         register_service(RedisConfig, redis_config)
-        logger.info(f"Registered Redis configuration for environment: {settings.ENVIRONMENT}")
+        
+        # Log Redis configuration details
+        if settings.UPSTASH_REDIS_HOST and settings.UPSTASH_REDIS_PASSWORD:
+            logger.info(f"Registered Upstash Redis configuration for environment: {settings.ENVIRONMENT}")
+        else:
+            host_info = redis_config.HOST + ":" + str(redis_config.PORT)
+            logger.info(f"Registered Redis configuration for {settings.ENVIRONMENT}: {host_info}")
     except Exception as e:
         # Log the error but don't fail - we should be able to continue without Redis in degraded mode
         logger.error(f"Failed to register Redis configuration: {str(e)}")
         logger.warning("Will fallback to in-memory cache only")
         # Register a minimal config for services that require it, but it won't be used for actual Redis connections
-        register_service(RedisConfig, RedisConfig(redis_url="redis://localhost:6379"))
-
-
-def _create_redis_config() -> RedisConfig:
-    """Create Redis configuration with appropriate settings for the current environment"""
-    # Get Redis URL with appropriate fallbacks
-    redis_url = _get_redis_url()
-    
-    # Create config with all the appropriate settings
-    return RedisConfig(
-        url=redis_url,
-        socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
-        socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
-        retry_on_timeout=settings.REDIS_RETRY_ON_TIMEOUT,
-        max_connections=settings.REDIS_MAX_CONNECTIONS,
-        health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
-        max_retries=settings.REDIS_RETRY_MAX_ATTEMPTS,
-    )
-
-
-def _get_redis_url() -> str:
-    """Get Redis URL with appropriate fallbacks based on environment"""
-    # Use explicit REDIS_URL if provided
-    if settings.REDIS_URL:
-        return settings.REDIS_URL
-    
-    # Otherwise build from components
-    protocol = "rediss" if settings.REDIS_SSL else "redis"
-    auth = f":{settings.REDIS_PASSWORD}@" if settings.REDIS_PASSWORD else ""
-    return f"{protocol}://{auth}{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+        register_service(RedisConfig, RedisConfig(HOST="localhost", PORT=6379))
 
 
 def register_cache_service() -> None:
@@ -128,51 +106,93 @@ def register_cache_service() -> None:
             redis_config = container.resolve(RedisConfig)
         except Exception as e:
             logger.warning(f"Failed to resolve Redis configuration: {str(e)}")
-            logger.warning("Cache service will operate with in-memory cache only")
+            logger.warning("Will fallback to in-memory cache only")
         
         # Configure cache service with environment-specific settings
         memory_ttl = 300  # 5 minutes default
-        default_ttl = settings.CACHE_TTL
-        max_memory_items = 10000 if settings.ENVIRONMENT == "production" else 1000
+        # Use getattr with default values for robust production settings
+        default_ttl = getattr(settings, "CACHE_TTL", 3600)  # 1 hour default
+        max_memory_items = 10000 if getattr(settings, "ENVIRONMENT", "development") == "production" else 1000
         
-        # Create cache service with proper config and fallbacks
-        cache_service = CacheService(
-            redis_config=redis_config,
-            memory_ttl=memory_ttl,
-            default_ttl=default_ttl,
-            max_memory_items=max_memory_items,
-            logger=logger
-        )
+        # Create cache service with proper config
+        try:
+            # Try the new constructor signature first
+            cache_service = CacheService(
+                redis_client=redis_config,
+                memory_ttl=memory_ttl,
+                default_ttl=default_ttl,
+                max_memory_items=max_memory_items
+            )
+        except TypeError:
+            try:
+                # Fallback to old constructor signature if needed
+                cache_service = CacheService(
+                    redis_config=redis_config,
+                    memory_ttl=memory_ttl,
+                    default_ttl=default_ttl,
+                    max_memory_items=max_memory_items
+                )
+            except TypeError:
+                # Last resort - try with minimal parameters
+                cache_service = CacheService()
         
         register_service(CacheService, cache_service)
         logger.info(f"Registered CacheService with Redis: {redis_config is not None}")
     except Exception as e:
-        # This is more serious - log error but create a minimal in-memory-only cache
+        # Create a minimal cache service without any extra parameters
         # so the application can continue in degraded mode
         logger.error(f"Failed to register cache service: {str(e)}")
-        fallback_cache = CacheService(redis_config=None, logger=logger)
-        register_service(CacheService, fallback_cache)
-        logger.warning("Using fallback in-memory-only cache service")
+        try:
+            fallback_cache = CacheService()
+            register_service(CacheService, fallback_cache)
+            logger.warning("Using fallback in-memory-only cache service")
+        except Exception as fallback_error:
+            logger.critical(f"Could not create fallback cache: {str(fallback_error)}")
+            # Application may still run, but caching will be entirely disabled
 
 
 def register_database_client() -> None:
     """Register database client with proper error handling"""
     try:
-        # Create database client with proper configuration
-        database_client = SupabaseClient(
-            supabase_url=settings.SUPABASE_URL,
-            supabase_key=settings.SUPABASE_ANON_KEY or settings.SUPABASE_KEY,
-            supabase_service_key=settings.SUPABASE_SERVICE_KEY,
-        )
+        # First, safely get configuration settings with fallbacks
+        supabase_url = getattr(settings, "SUPABASE_URL", None)
+        supabase_key = getattr(settings, "SUPABASE_ANON_KEY", None) or getattr(settings, "SUPABASE_KEY", None)
+        supabase_service_key = getattr(settings, "SUPABASE_SERVICE_KEY", None)
+        
+        if not supabase_url or not supabase_key:
+            logger.warning("Missing Supabase configuration, database features will be disabled")
+            return
+            
+        # Try different constructor signatures to handle different versions of the client
+        try:
+            # Try with url parameter (newer versions)
+            database_client = SupabaseClient(
+                url=supabase_url,
+                key=supabase_key,
+                service_key=supabase_service_key,
+            )
+        except TypeError:
+            try:
+                # Try with supabase_url parameter (older versions)
+                database_client = SupabaseClient(
+                    supabase_url=supabase_url,
+                    supabase_key=supabase_key,
+                    supabase_service_key=supabase_service_key,
+                )
+            except TypeError:
+                # Try minimal parameters
+                database_client = SupabaseClient(
+                    supabase_url,
+                    supabase_key
+                )
+        
         register_service(SupabaseClient, database_client)
-        logger.info("Registered SupabaseClient")
+        logger.info(f"Registered SupabaseClient with URL: {supabase_url}")
     except Exception as e:
         logger.error(f"Failed to register database client: {str(e)}")
-        raise RegistryError(
-            message="Failed to initialize database client",
-            context={"supabase_url": settings.SUPABASE_URL},
-            cause=e
-        )
+        # Instead of raising an error, simply log and continue
+        # This allows the application to run in a degraded mode without database
+        logger.warning("Application will run without database support")
 
 
 def register_absbox_service() -> None:

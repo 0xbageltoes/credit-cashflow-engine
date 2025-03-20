@@ -11,6 +11,7 @@ This module provides a consistent pattern for error handling across the applicat
 import asyncio
 import functools
 import inspect
+import json
 import logging
 import traceback
 from datetime import datetime
@@ -56,7 +57,7 @@ class ApplicationError(Exception):
         """
         result = {
             "error_type": self.__class__.__name__,
-            "message": str(self),
+            "error_message": str(self),
             "timestamp": self.timestamp,
             **self.context
         }
@@ -96,7 +97,42 @@ class DataError(ApplicationError):
 
 class ServiceError(ApplicationError):
     """Error in service operations such as external API calls."""
-    pass
+    
+    def __init__(
+        self, 
+        message: str, 
+        code: int = 500, 
+        details: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        original_error: Optional[Exception] = None,
+        cause: Optional[Exception] = None
+    ):
+        self.message = message
+        self.code = code
+        self.details = details
+        self.context = context or {}
+        self.original_error = original_error
+        self.cause = cause
+        super().__init__(message, context, cause)
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert error to dictionary for logging and serialization.
+        
+        Returns:
+            Dictionary representation of error with all safe attributes
+        """
+        # Create a safe copy that doesn't include message key to avoid logging conflicts
+        error_dict = {
+            'error_message': self.message,
+            'error_code': self.code,
+            'error_type': self.__class__.__name__,
+            'error_context': self.context
+        }
+        
+        if self.details:
+            error_dict['error_details'] = self.details
+            
+        return error_dict
 
 
 class ConfigurationError(ApplicationError):
@@ -152,48 +188,47 @@ def handle_errors(
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
-            except ApplicationError as e:
-                # Already an application error, just log and re-raise
-                logger.error(f"{e.__class__.__name__}: {str(e)}", extra=e.to_dict())
-                raise
             except Exception as e:
-                # Convert to application error
-                error_type = error_mapping.get(type(e), default_error) if error_mapping else default_error
+                # Convert to ServiceError if it's not already
+                if not isinstance(e, ServiceError):
+                    error = ServiceError(
+                        message=str(e),
+                        code=500,
+                        details=traceback.format_exc(),
+                        original_error=e
+                    )
+                else:
+                    error = e
                 
-                # Create error with context
-                function_context = {
-                    "function": func.__name__,
-                    "module": func.__module__,
-                    "traceback": traceback.format_exc(),
-                    **(context or {})
-                }
-                
-                # Add args and kwargs summaries (safely)
+                # Log the error safely without conflicting log record keys
                 try:
-                    # Try to add args and kwargs, but don't fail if they can't be converted to string
-                    if args:
-                        # Summarize args to avoid huge objects
-                        arg_summary = [f"{type(arg).__name__}:{str(arg)[:100]}" for arg in args]
-                        function_context["args"] = arg_summary
+                    # Get error properties in a way that avoids 'message' key conflict
+                    error_dict = error.to_dict()
                     
-                    if kwargs:
-                        # Summarize kwargs to avoid huge objects
-                        kwargs_summary = {k: f"{type(v).__name__}:{str(v)[:100]}" for k, v in kwargs.items()}
-                        function_context["kwargs"] = kwargs_summary
-                except Exception:
-                    # If summarizing args/kwargs fails, just continue without them
-                    pass
-                
-                error = error_type(
-                    message=str(e),
-                    context=function_context,
-                    cause=e
-                )
-                
-                # Log error
-                logger.error(f"{error.__class__.__name__}: {str(error)}", extra=error.to_dict())
-                
-                # Re-raise application error
+                    # Create a clean extra dictionary that won't conflict with LogRecord attributes
+                    safe_extras = {}
+                    for key, value in error_dict.items():
+                        # Skip any keys that could conflict with LogRecord attributes
+                        if key not in ('message', 'levelname', 'pathname', 'lineno'):
+                            safe_extras[key] = value
+                    
+                    # Log with the error message in the message parameter
+                    logger.error(
+                        f"{error.__class__.__name__}: {str(error)}", 
+                        exc_info=True,
+                        extra=safe_extras
+                    )
+                except Exception as logging_error:
+                    # Fallback for when logging itself fails
+                    try:
+                        logger.error(
+                            f"Error in logging: {str(logging_error)}. Original error: {str(error)}",
+                            exc_info=True
+                        )
+                    except:
+                        # Ultimate fallback if all logging fails
+                        print(f"CRITICAL: Logging failure. Error was: {str(error)}")
+                    
                 raise error
         
         # Define async wrapper

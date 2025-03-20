@@ -5,6 +5,9 @@ from fastapi.responses import JSONResponse, Response
 from datetime import datetime
 import json
 import logging
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from app.api.routes import router as api_router
 from app.core.middleware import RateLimitMiddleware, RequestTrackingMiddleware
 from app.core.monitoring import PrometheusMiddleware
@@ -19,6 +22,25 @@ from app.core.rate_limiting import limiter, init_rate_limiter
 from app.tasks.forecasting import generate_forecast, run_stress_test
 from app.services.market_data import MarketDataService
 import uuid
+
+# Load environment variables from .env file
+try:
+    # Get the project root directory
+    project_root = Path(__file__).parent.parent.absolute()
+    env_path = project_root / '.env'
+    
+    # Check if .env file exists
+    if env_path.exists():
+        logger = logging.getLogger(__name__)
+        logger.info(f"Loading environment variables from {env_path}")
+        load_dotenv(dotenv_path=env_path, override=True)
+        logger.info("Environment variables loaded successfully")
+    else:
+        logger = logging.getLogger(__name__)
+        logger.warning(f".env file not found at {env_path}")
+except Exception as e:
+    logger = logging.getLogger(__name__)
+    logger.error(f"Error loading environment variables: {e}")
 
 # Initialize error tracking and logging
 init_sentry()
@@ -44,10 +66,10 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    allow_methods=settings.CORS_ALLOW_METHODS,
-    allow_headers=settings.CORS_ALLOW_HEADERS,
+    allow_origins=getattr(settings, "CORS_ORIGINS", ["*"]),  # Safe fallback to allow all origins
+    allow_credentials=getattr(settings, "CORS_ALLOW_CREDENTIALS", True),
+    allow_methods=getattr(settings, "CORS_ALLOW_METHODS", ["*"]),  # Safe fallback for all methods
+    allow_headers=getattr(settings, "CORS_ALLOW_HEADERS", ["*"]),  # Safe fallback for all headers
 )
 
 # Add rate limiting middleware
@@ -240,7 +262,7 @@ async def health_check():
         db_status = {"status": "unhealthy", "error": str(e)}
     
     # Check Redis connection
-    redis_status = check_redis_connection()
+    redis_status = await check_redis_connection()
     
     # Check system health (CPU, memory, disk)
     system_status = check_system_health()

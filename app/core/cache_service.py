@@ -1639,6 +1639,80 @@ class CacheService:
         except Exception as e:
             logger.warning(f"Error closing Redis connections: {str(e)}")
 
+    async def ping(self) -> bool:
+        """Ping the Redis server to check if it's available
+        
+        Returns:
+            bool: True if Redis is available and responsive
+        """
+        if not self._check_circuit_breaker():
+            return False
+        
+        try:
+            if self._redis_async:
+                result = await self._redis_async.ping()
+                return result == True
+            return False
+        except Exception as e:
+            logger.error(f"Error pinging Redis: {str(e)}")
+            self._increment_error_count()
+            return False
+    
+    async def info(self) -> Dict[str, Any]:
+        """Get Redis server information
+        
+        Returns:
+            Dict[str, Any]: Redis server information
+        """
+        if not self._check_circuit_breaker():
+            return {}
+        
+        try:
+            if self._redis_async:
+                info_data = await self._redis_async.info()
+                return info_data
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting Redis info: {str(e)}")
+            self._increment_error_count()
+            return {}
+            
+    def ping_sync(self) -> bool:
+        """Ping the Redis server synchronously
+        
+        Returns:
+            bool: True if Redis is available and responsive
+        """
+        if not self._check_circuit_breaker():
+            return False
+        
+        try:
+            if self._redis:
+                return self._redis.ping()
+            return False
+        except Exception as e:
+            logger.error(f"Error pinging Redis synchronously: {str(e)}")
+            self._increment_error_count()
+            return False
+    
+    def info_sync(self) -> Dict[str, Any]:
+        """Get Redis server information synchronously
+        
+        Returns:
+            Dict[str, Any]: Redis server information
+        """
+        if not self._check_circuit_breaker():
+            return {}
+        
+        try:
+            if self._redis:
+                return self._redis.info()
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting Redis info synchronously: {str(e)}")
+            self._increment_error_count()
+            return {}
+            
 # Global cache service instance
 _cache_service = None
 

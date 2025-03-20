@@ -6,7 +6,19 @@ with production-ready defaults and environment variable support.
 """
 import os
 from typing import Dict, Any, Optional
-from pydantic import BaseSettings, Field
+from pydantic import Field
+
+# Handle Pydantic v2 vs v1 BaseSettings
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    try:
+        # Fallback for older Pydantic versions
+        from pydantic import BaseSettings
+    except ImportError:
+        from pydantic.main import BaseModel as BaseSettings
+        import logging
+        logging.warning("Using BaseModel as fallback for BaseSettings. Some functionality may be limited.")
 
 class StressTestSettings(BaseSettings):
     """

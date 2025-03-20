@@ -200,22 +200,103 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             
-            # Record metrics after processing
-            endpoint = request.url.path
+            # Record request metrics
+            path = request.url.path
+            method = request.method
+            
+            # Simplify path for common patterns to avoid metric explosion
+            # E.g., /users/123 -> /users/{id}
+            if "/api/" in path:
+                parts = path.split("/")
+                simplified_parts = []
+                
+                for i, part in enumerate(parts):
+                    # Check if this part is likely a numeric ID
+                    if part.isdigit() and i > 0 and parts[i-1] in ["users", "items", "products", "orders"]:
+                        simplified_parts.append("{id}")
+                    else:
+                        simplified_parts.append(part)
+                
+                path = "/".join(simplified_parts)
+            
             REQUEST_COUNT.labels(
-                method=request.method, 
-                endpoint=endpoint, 
+                method=method,
+                endpoint=path,
                 status_code=response.status_code
             ).inc()
             
             REQUEST_LATENCY.labels(
-                method=request.method, 
-                endpoint=endpoint
+                method=method,
+                endpoint=path
             ).observe(time.time() - start_time)
             
             return response
+            
         finally:
+            # Ensure we decrement active requests even on error
             ACTIVE_REQUESTS.dec()
+
+class CalculationTracker:
+    """
+    Utility class to track calculation performance and metrics.
+    
+    This class provides a context manager for timing calculations and
+    recording their performance metrics for monitoring and optimization.
+    It integrates with Prometheus metrics for real-time monitoring.
+    """
+    
+    def __init__(self, operation_type: str, enable_logging: bool = True):
+        """
+        Initialize a calculation tracker for a specific operation type
+        
+        Args:
+            operation_type: The type of calculation being performed (e.g., 'cash_flow', 'pricing')
+            enable_logging: Whether to log timing information (default: True)
+        """
+        self.operation_type = operation_type
+        self.enable_logging = enable_logging
+        self.start_time = None
+        self.end_time = None
+        
+    def __enter__(self):
+        """Start timing the calculation"""
+        self.start_time = time.time()
+        logger.debug(f"Starting calculation: {self.operation_type}")
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        End timing and record metrics
+        
+        If an exception occurred during the calculation, it will be logged
+        but not suppressed.
+        """
+        self.end_time = time.time()
+        duration = self.end_time - self.start_time
+        
+        # Record to Prometheus metrics
+        CALCULATION_TIME.labels(operation_type=self.operation_type).observe(duration)
+        
+        if self.enable_logging:
+            if exc_type:
+                logger.error(f"Calculation '{self.operation_type}' failed after {duration:.3f}s: {exc_val}")
+            else:
+                logger.info(f"Calculation '{self.operation_type}' completed in {duration:.3f}s")
+                
+        # Additional context can be stored here if needed
+        self.duration = duration
+        
+        # Don't suppress exceptions
+        return False
+    
+    @property
+    def elapsed_time(self) -> float:
+        """Get the elapsed time of the calculation in seconds"""
+        if self.start_time is None:
+            return 0.0
+            
+        end = self.end_time if self.end_time is not None else time.time()
+        return end - self.start_time
 
 async def check_redis_connection() -> Dict[str, Any]:
     """
@@ -229,11 +310,11 @@ async def check_redis_connection() -> Dict[str, Any]:
         start_time = time.time()
         
         # Try a simple Redis ping operation
-        ping_result = cache_service.ping()
+        ping_result = await cache_service.ping()
         
         if ping_result:
             # Get some basic Redis info
-            info = cache_service.info()
+            info = await cache_service.info()
             
             latency = time.time() - start_time
             return {
